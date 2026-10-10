@@ -16,8 +16,8 @@ honor its STOP conditions, and update your row when done.
 |------|-------|----------|--------|------------|--------|
 | 001 | Stop spurious "type mismatch" on `pointer = malloc(...)` | P1 | S | — | DONE (merged into master at `a610eb2`; reviewed & verified 13/13) |
 | 002 | Add PRD §10 lexer/parser/semantic unit tests | P1 | M | 001 | DONE (merged into master at `516d782`; reviewed & verified 10/10) |
-| 003 | Add a Python dependency manifest (`requirements.txt`) | P2 | S | — | TODO |
-| 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | TODO |
+| 003 | Add a Python dependency manifest (`requirements.txt`) | P2 | S | — | DONE (merged into master at `b6e7b47`; reviewed & verified) |
+| 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | DONE (merged into master at `b6e7b47`; reviewed & verified 13/13) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
