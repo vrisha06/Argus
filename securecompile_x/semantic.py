@@ -155,6 +155,9 @@ class SemanticAnalyzer:
         lt = self._type_of(st.target)
         rt = self._type_of(st.value)
         if lt and rt and lt.base != rt.base and not (lt.is_pointer() and rt.is_pointer()):
+            # void* (e.g. malloc result) is assignable to any object pointer — valid C.
+            if lt.is_pointer() and rt.base == "void":
+                return
             # non-fatal: int<->char are compatible-ish; only warn on struct-like mismatch
             if {lt.base, rt.base} - {"int", "char"}:
                 self.errors.append(
