@@ -18,8 +18,8 @@ honor its STOP conditions, and update your row when done.
 | 002 | Add PRD §10 lexer/parser/semantic unit tests | P1 | M | 001 | DONE (merged into master at `516d782`; reviewed & verified 10/10) |
 | 003 | Add a Python dependency manifest (`requirements.txt`) | P2 | S | — | DONE (merged into master at `b6e7b47`; reviewed & verified) |
 | 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | DONE (merged into master at `b6e7b47`; reviewed & verified 13/13) |
-| 005 | Prefix `++`/`--` + chained-assignment full support (supersedes 004's rejection) | P2 | M | — | TODO |
-| 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | TODO |
+| 005 | Prefix `++`/`--` + chained-assignment full support (supersedes 004's rejection) | P2 | M | — | DONE (merged into master at `fefa50d`; reviewed & verified 13/13) |
+| 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | DONE (merged into master at `fefa50d`; reviewed & verified) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
