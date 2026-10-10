@@ -22,6 +22,7 @@ honor its STOP conditions, and update your row when done.
 | 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | DONE (merged into master at `fefa50d`; reviewed & verified) |
 | 007 | Multi-file analysis: cross-file taint + per-file attribution (PRD stretch) | P3 | L | — | DONE (merged into master at `607e87f`; reviewed & verified, 5/5 suites green + live 2-file run) |
 | 008 | Multi-file support in the web app (API + React UI) | P3 | M | 007 | DONE (merged into master at `82e48d8`; reviewed & verified 6/6 suites + live browser multi-file UI) |
+| 009 | Upgrade Vite 5→8 to clear the esbuild dev-server advisory | P3 | S | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
@@ -40,14 +41,15 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
   `(ir_funcs, callgraph)`, so multi-file is a linking + attribution layer, not a
   rewrite. Web-UI multi-file support is split out as a future follow-up (plan 008,
   not yet written).
-- **npm dev-only advisory** (esbuild GHSA-67mh-4wv8-2f99, moderate): REJECTED.
-  The only fix is `vite@8` — a 3-major-version breaking upgrade (5→8) — for a
-  **dev-server-only** issue with zero impact on the built/shipped app
-  (`npm audit --omit=dev` → 0). Not worth breaking the toolchain. Revisit only
-  if Vite is upgraded for other reasons.
-- **Path-sensitivity consolidation**: REJECTED (not a bug). `guards` (bounds
-  heuristic) and CFG `refine` (nullness) are not equivalent; merging them would
-  regress bounds-check suppression.
+- **npm dev-only advisory** (esbuild GHSA-67mh-4wv8-2f99, moderate): initially
+  rejected (dev-only; the fix is a breaking vite 5→8 jump). **Overridden by the
+  maintainer (2026-10-11) — now plan 009** (attempt the vite@8 upgrade, roll back
+  if it can't be made clean).
+- **Path-sensitivity consolidation**: REJECTED, **confirmed by the maintainer
+  (2026-10-11) to leave as-is**. Not a bug: `guards` (bounds heuristic) and CFG
+  `refine` (nullness) are not equivalent; the naive merge would regress
+  bounds-check suppression. Working-as-intended, not debt. (A no-regression
+  unification was offered and declined.)
 
 ## Findings considered and rejected (so they aren't re-audited)
 
