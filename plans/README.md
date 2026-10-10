@@ -20,7 +20,7 @@ honor its STOP conditions, and update your row when done.
 | 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | DONE (merged into master at `b6e7b47`; reviewed & verified 13/13) |
 | 005 | Prefix `++`/`--` + chained-assignment full support (supersedes 004's rejection) | P2 | M | — | DONE (merged into master at `fefa50d`; reviewed & verified 13/13) |
 | 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | DONE (merged into master at `fefa50d`; reviewed & verified) |
-| 007 | Multi-file analysis: cross-file taint + per-file attribution (PRD stretch) | P3 | L | — | TODO (scoped, ready to execute) |
+| 007 | Multi-file analysis: cross-file taint + per-file attribution (PRD stretch) | P3 | L | — | DONE (merged into master at `607e87f`; reviewed & verified, 5/5 suites green + live 2-file run) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
