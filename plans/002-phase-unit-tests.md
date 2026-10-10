@@ -5,9 +5,9 @@
 > anything in "STOP conditions" occurs, stop and report. When done, update this
 > plan's status row in `plans/README.md`.
 >
-> **Drift check (run first)**: repo is not under git. Before writing, open the
-> four files named in "Current state" and confirm the cited public functions
-> still exist with the signatures shown. On a mismatch, STOP.
+> **Drift check (run first)**: `git diff --stat a610eb2..HEAD -- securecompile_x/lexer.py securecompile_x/parser.py securecompile_x/semantic.py securecompile_x/cli.py`
+> If any of those changed since this plan was written, confirm the cited public
+> functions still have the signatures shown in "Current state". On a mismatch, STOP.
 
 ## Status
 
@@ -18,7 +18,7 @@
   below asserts `malloc`→pointer produces no diagnostic; that is only true after
   001 lands)
 - **Category**: tests
-- **Planned at**: commit `unavailable` (repo is not a git repository), 2026-10-11
+- **Planned at**: commit `a610eb2`, 2026-10-11
 
 ## Why this matters
 

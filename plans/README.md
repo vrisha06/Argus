@@ -14,7 +14,7 @@ honor its STOP conditions, and update your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Stop spurious "type mismatch" on `pointer = malloc(...)` | P1 | S | — | TODO |
+| 001 | Stop spurious "type mismatch" on `pointer = malloc(...)` | P1 | S | — | DONE (merged into master at `a610eb2`; reviewed & verified 13/13) |
 | 002 | Add PRD §10 lexer/parser/semantic unit tests | P1 | M | 001 | TODO |
 | 003 | Add a Python dependency manifest (`requirements.txt`) | P2 | S | — | TODO |
 | 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | TODO |
