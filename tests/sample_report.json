@@ -1,0 +1,34 @@
+{
+  "tool": "SecureCompile-X",
+  "source_file": "tests/uif_interproc.c",
+  "diagnostics": {
+    "Lexer": [],
+    "Parser": [],
+    "Semantic": []
+  },
+  "finding_count": 1,
+  "findings": [
+    {
+      "vulnerability_type": "Unsafe Input Flow",
+      "class": "unsafe_input_flow",
+      "location": {
+        "function": "run",
+        "line": 3,
+        "col": 0
+      },
+      "root_cause_trace": [
+        "run(): receives tainted argument from caller",
+        "L3: untrusted data reaches 'system()'"
+      ],
+      "data_flow_path": "main() [untrusted input via scanf()] -> run(c) -> system(...) @L3",
+      "phase_attribution": {
+        "phase": "Security Analysis",
+        "needs": "IR + interprocedural call graph + taint",
+        "why": "Tainted value crosses assignments and function boundaries to a sink; only interprocedural data-flow on the IR exposes it."
+      },
+      "reachable_from_main": true,
+      "risk_score": 9.5,
+      "suggested_fix": "never pass untrusted input to system(); validate against an allow-list or avoid the shell entirely"
+    }
+  ]
+}

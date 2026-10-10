@@ -1,0 +1,18 @@
+======================================================================
+SecureCompile-X  -  Security Report
+Source: tests/bof_strcpy.c
+======================================================================
+
+1 finding(s):
+
+--- Finding #1 --------------------------------------------------
+Vulnerability : Buffer Overflow  (function copy_name, line 4)
+Risk score    : 10.0/10
+Root-cause    :
+    copy_name(): receives tainted argument from caller
+    L4: reaches unbounded copy 'strcpy' into buffer 'buf'
+Data-flow     : main() [untrusted input via scanf()] -> copy_name(input) -> strcpy(...) @L4
+Phase         : Security Analysis  (needs IR + call graph + taint)
+  why earlier : Requires data-flow of a tainted/oversized value into a sink; lexer/parser/semantic phases see syntax and types but not flow.
+Reachable     : yes (from main)
+Suggested fix : replace strcpy with a bounded variant (strncpy/snprintf) using sizeof(buf)

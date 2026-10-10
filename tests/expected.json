@@ -1,0 +1,30 @@
+{
+  "_comment": "Test oracle (PRD section 10). Each case lists the expected findings; empty findings == clean control. score_range is inclusive.",
+  "cases": [
+    {"file": "bof_strcpy.c", "group": "buffer_overflow",
+     "findings": [{"class": "buffer_overflow", "line": 4, "phase": "Security Analysis", "reachable": true, "score_range": [8.0, 10.0]}]},
+    {"file": "bof_gets.c", "group": "buffer_overflow",
+     "findings": [{"class": "buffer_overflow", "line": 4, "phase": "Security Analysis", "reachable": true, "score_range": [8.0, 10.0]}]},
+    {"file": "bof_index.c", "group": "buffer_overflow",
+     "findings": [{"class": "buffer_overflow", "line": 6, "phase": "Security Analysis", "reachable": true, "score_range": [8.0, 10.0]}]},
+    {"file": "bof_safe.c", "group": "control", "findings": []},
+
+    {"file": "uaf_use.c", "group": "use_after_free",
+     "findings": [{"class": "use_after_free", "line": 6, "phase": "Security Analysis", "reachable": true, "score_range": [5.0, 8.0]}]},
+    {"file": "uaf_double.c", "group": "use_after_free",
+     "findings": [{"class": "use_after_free", "line": 6, "phase": "Security Analysis", "reachable": true, "score_range": [5.0, 8.0]}]},
+    {"file": "uaf_safe.c", "group": "control", "findings": []},
+
+    {"file": "null_unchecked.c", "group": "null_pointer",
+     "findings": [{"class": "null_pointer", "line": 5, "phase": "Security Analysis", "reachable": true, "score_range": [5.0, 8.0]}]},
+    {"file": "null_checked.c", "group": "control", "findings": []},
+    {"file": "null_earlyreturn.c", "group": "control", "findings": []},
+
+    {"file": "uif_direct.c", "group": "unsafe_input_flow",
+     "findings": [{"class": "unsafe_input_flow", "line": 5, "phase": "Security Analysis", "reachable": true, "score_range": [8.0, 10.0]}]},
+    {"file": "uif_interproc.c", "group": "unsafe_input_flow",
+     "findings": [{"class": "unsafe_input_flow", "line": 3, "phase": "Security Analysis", "reachable": true, "score_range": [8.0, 10.0]}]},
+
+    {"file": "control_safe.c", "group": "control", "findings": []}
+  ]
+}
