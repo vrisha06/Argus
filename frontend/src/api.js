@@ -21,3 +21,13 @@ export async function analyze(code, filename = "input.c") {
   if (!r.ok) throw new Error(`analysis failed (${r.status})`);
   return r.json();
 }
+
+export async function analyzeMulti(files) {
+  const r = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files }),
+  });
+  if (!r.ok) throw new Error(`analysis failed (${r.status})`);
+  return r.json();
+}

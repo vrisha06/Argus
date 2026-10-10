@@ -22,7 +22,8 @@ export default function FindingCard({ finding, index }) {
       </div>
 
       <div className="loc">
-        <code>{f.location.function}()</code> · line {f.location.line}
+        <code>{f.location.function}()</code> ·{" "}
+        {f.location.file ? `${f.location.file}:${f.location.line}` : `line ${f.location.line}`}
         <span className={`reach ${f.reachable_from_main ? "yes" : "no"}`}>
           {f.reachable_from_main ? "reachable from main" : "not reachable"}
         </span>
