@@ -152,7 +152,7 @@ class Parser:
         # expression statement (incl assignment)
         expr = self.expression()
         self.expect("SEMI")
-        if isinstance(expr, _AssignExpr):
+        if isinstance(expr, AssignExpr):
             return A.Assign(expr.target, expr.value, expr.line, expr.col)
         return A.ExprStmt(expr, t.line, t.col)
 
@@ -196,7 +196,7 @@ class Parser:
                 init = self.var_decl()
             else:
                 e = self.expression(); self.expect("SEMI")
-                init = A.Assign(e.target, e.value, e.line, e.col) if isinstance(e, _AssignExpr) \
+                init = A.Assign(e.target, e.value, e.line, e.col) if isinstance(e, AssignExpr) \
                     else A.ExprStmt(e, t.line, t.col)
         else:
             self.expect("SEMI")
@@ -207,7 +207,7 @@ class Parser:
         step = None
         if not self.check("RPAREN"):
             e = self.expression()
-            step = A.Assign(e.target, e.value, e.line, e.col) if isinstance(e, _AssignExpr) \
+            step = A.Assign(e.target, e.value, e.line, e.col) if isinstance(e, AssignExpr) \
                 else A.ExprStmt(e, t.line, t.col)
         self.expect("RPAREN")
         body = self.statement()
@@ -223,13 +223,9 @@ class Parser:
         if self.check("OP", "=") or self.check("OP", "+=") or self.check("OP", "-="):
             op = self.advance().value
             right = self.assignment()
-            if isinstance(right, _AssignExpr):
-                raise ParseError(
-                    f"{t.line}:{t.col}: chained assignment is not supported; "
-                    "split 'a = b = c' into separate statements")
             if op != "=":
                 right = A.Binary(op[0], left, right, t.line, t.col)
-            return _AssignExpr(left, right, t.line, t.col)
+            return AssignExpr(left, right, t.line, t.col)
         return left
 
     def _binary_level(self, ops, sub):
@@ -260,6 +256,14 @@ class Parser:
 
     def unary(self):
         t = self.peek()
+        if self.peek().kind == "OP" and self.peek().value in ("++", "--"):
+            op = self.advance().value
+            operand = self.unary()
+            if not isinstance(operand, (A.Var, A.Index, A.Unary)):
+                raise ParseError(f"{t.line}:{t.col}: '{op}' requires an lvalue")
+            one = A.Num(1, t.line, t.col)
+            delta = A.Binary(op[0], operand, one, t.line, t.col)  # operand +/- 1
+            return AssignExpr(operand, delta, t.line, t.col)
         if self.peek().kind == "OP" and self.peek().value in ("*", "&", "-", "!"):
             op = self.advance().value
             operand = self.unary()
@@ -288,7 +292,7 @@ class Parser:
                 op = self.advance().value          # "++" or "--"
                 one = A.Num(1, t.line, t.col)
                 delta = A.Binary(op[0], node, one, t.line, t.col)  # node + 1 / node - 1
-                node = _AssignExpr(node, delta, t.line, t.col)
+                node = AssignExpr(node, delta, t.line, t.col)
                 break   # i++ is a complete postfix expression; stop the loop
             else:
                 break
@@ -309,7 +313,7 @@ class Parser:
         raise ParseError(f"{t.line}:{t.col}: unexpected token {t.value!r}")
 
 
-class _AssignExpr(A.Node):
+class AssignExpr(A.Node):
     """Internal: assignment used as an expression; lifted to A.Assign stmt."""
     def __init__(self, target, value, line, col):
         self.target, self.value = target, value
