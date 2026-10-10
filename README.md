@@ -27,6 +27,9 @@ Full-stack web UI: **React (Vite) frontend + FastAPI backend**, both calling the
 same `compile_and_analyze` core as the CLI, so results are identical.
 
 ```bash
+# 0. install the web app's Python dependencies (CLI needs none)
+pip install -r requirements.txt
+
 # 1. build the React frontend (one time, or after frontend changes)
 cd frontend && npm install && npm run build && cd ..
 
