@@ -52,6 +52,7 @@ class IRFunction:
         self.instrs = []            # linear TAC, program order
         self.blocks = []            # CFG basic blocks
         self.defs = {}              # operand -> defining Instr
+        self.file = None            # source file (multi-file attribution)
 
     def emit(self, instr):
         self.instrs.append(instr)
@@ -78,13 +79,24 @@ class IRGenerator:
         return f"L{self._l}"
 
     def generate(self, prog):
-        for f in prog.functions:
-            self._gen_func(f)
+        return self.generate_programs([prog])
+
+    def generate_programs(self, progs):
+        """Build one merged IR dict across all translation units.
+
+        The first definition of a name wins (matching semantic linking); a later
+        duplicate is skipped so the merge never silently drops the original."""
+        for prog in progs:
+            for f in prog.functions:
+                if f.name in self.functions:
+                    continue
+                self._gen_func(f)
         return self.functions
 
     def _gen_func(self, f):
         self._l = 0
         irf = IRFunction(f.name, [(p.name, p.type) for p in f.params])
+        irf.file = getattr(f, "file", None)
         self.functions[f.name] = irf
         self._cur = irf
         self._guards = frozenset()
@@ -339,3 +351,7 @@ class IRGenerator:
 
 def generate(prog, symtab):
     return IRGenerator(symtab).generate(prog)
+
+
+def generate_programs(progs, symtab):
+    return IRGenerator(symtab).generate_programs(progs)

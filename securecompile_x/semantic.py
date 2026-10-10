@@ -11,6 +11,7 @@ class Symbol:
         self.name, self.type, self.scope, self.kind = name, type_, scope, kind
         self.decl_line = decl_line
         self.alloc = None  # 'stack' | 'heap' | 'static'
+        self.file = None   # source file a function symbol came from (multi-file)
 
     def __repr__(self):
         return f"Symbol({self.name}:{self.type} {self.scope}/{self.kind})"
@@ -79,18 +80,39 @@ class SemanticAnalyzer:
         self.cur_func = None
 
     def analyze(self, prog):
-        # pass 1: declare functions (allows forward/mutual calls)
-        for f in prog.functions:
-            if f.name in self.symtab.functions:
-                self.errors.append(f"{f.line}:{f.col}: redefinition of function '{f.name}'")
-            self.symtab.functions[f.name] = f
-            self.callgraph.add_node(f.name)
-            fsym = Symbol(f.name, f.ret_type, "global", "func", f.line)
-            self.symtab.scopes[0][f.name] = fsym
-            self.symtab.all.append(fsym)
+        return self.analyze_programs([prog])
+
+    def analyze_programs(self, progs):
+        """Link multiple translation units into one symbol table + call graph.
+
+        Pass 1 declares every function across all programs (so cross-file calls
+        resolve and mutual recursion works); pass 2 analyses all bodies. The
+        first definition of a name wins; a later definition in any unit is a
+        redefinition diagnostic. Each function Symbol records its source file."""
+        # pass 1: declare functions across all units
+        for prog in progs:
+            for f in prog.functions:
+                if f.name in self.symtab.functions:
+                    first_file = getattr(self.symtab.functions[f.name], "file", None)
+                    if first_file:
+                        self.errors.append(
+                            f"{f.line}:{f.col}: redefinition of function "
+                            f"'{f.name}' (first defined in {first_file})")
+                    else:
+                        self.errors.append(
+                            f"{f.line}:{f.col}: redefinition of function '{f.name}'")
+                    # first definition wins; skip re-declaring
+                    continue
+                self.symtab.functions[f.name] = f
+                self.callgraph.add_node(f.name)
+                fsym = Symbol(f.name, f.ret_type, "global", "func", f.line)
+                fsym.file = getattr(f, "file", None)
+                self.symtab.scopes[0][f.name] = fsym
+                self.symtab.all.append(fsym)
         # pass 2: bodies
-        for f in prog.functions:
-            self._func(f)
+        for prog in progs:
+            for f in prog.functions:
+                self._func(f)
         return self.symtab, self.callgraph, self.errors
 
     def _func(self, f):
