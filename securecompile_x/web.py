@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .cli import compile_and_analyze
+from .cli import compile_and_analyze, compile_and_analyze_multi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND = os.path.join(ROOT, "frontend")
@@ -28,9 +28,15 @@ app = FastAPI(title="SecureCompile-X", version="1.0.0",
                           "root-cause analysis.")
 
 
-class AnalyzeRequest(BaseModel):
+class FileInput(BaseModel):
+    name: str
     code: str
+
+
+class AnalyzeRequest(BaseModel):
+    code: str | None = None
     filename: str = "input.c"
+    files: list[FileInput] | None = None
 
 
 # Curated example set (maps to the seeded test suite).
@@ -69,10 +75,16 @@ def get_example(name: str):
 
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest):
-    findings, diagnostics = compile_and_analyze(req.code, req.filename)
+    if req.files:
+        units = [(f.name, f.code) for f in req.files]
+        findings, diagnostics = compile_and_analyze_multi(units)
+        source_file = ", ".join(f.name for f in req.files)
+    else:
+        findings, diagnostics = compile_and_analyze(req.code or "", req.filename)
+        source_file = req.filename
     return {
         "tool": "SecureCompile-X",
-        "source_file": req.filename,
+        "source_file": source_file,
         "diagnostics": diagnostics,
         "finding_count": len(findings),
         "findings": [f.to_dict() for f in findings],
