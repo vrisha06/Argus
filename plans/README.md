@@ -20,6 +20,7 @@ honor its STOP conditions, and update your row when done.
 | 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | DONE (merged into master at `b6e7b47`; reviewed & verified 13/13) |
 | 005 | Prefix `++`/`--` + chained-assignment full support (supersedes 004's rejection) | P2 | M | — | DONE (merged into master at `fefa50d`; reviewed & verified 13/13) |
 | 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | DONE (merged into master at `fefa50d`; reviewed & verified) |
+| 007 | Multi-file analysis: cross-file taint + per-file attribution (PRD stretch) | P3 | L | — | TODO (scoped, ready to execute) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
@@ -33,9 +34,11 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 
 ## Scope decisions (2026-10-11 "fix remaining items" pass)
 
-- **Multi-file analysis** (PRD stretch goal): NOT selected for this pass — large
-  architectural effort (cross-TU symbol linking, cross-file call graph +
-  reachability), highest bug risk. Deferred as its own future multi-step plan.
+- **Multi-file analysis** (PRD stretch goal): now **scoped as plan 007**
+  (2026-10-11). Key finding: the security engine is already interprocedural over
+  `(ir_funcs, callgraph)`, so multi-file is a linking + attribution layer, not a
+  rewrite. Web-UI multi-file support is split out as a future follow-up (plan 008,
+  not yet written).
 - **npm dev-only advisory** (esbuild GHSA-67mh-4wv8-2f99, moderate): REJECTED.
   The only fix is `vite@8` — a 3-major-version breaking upgrade (5→8) — for a
   **dev-server-only** issue with zero impact on the built/shipped app
