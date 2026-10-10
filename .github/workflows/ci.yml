@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Security oracle (PRD section 10)
+        run: python tests/run_tests.py
+      - name: Phase unit tests (lexer/parser/semantic)
+        run: python tests/run_phase_tests.py
+      - name: Parser extras
+        run: python tests/test_parser_extras.py
+      - name: Semantic void-pointer regression
+        run: python tests/test_semantic_void_ptr.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run build
