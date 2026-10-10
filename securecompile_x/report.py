@@ -35,9 +35,11 @@ def to_text(findings, source_file, diagnostics=None):
     for i, f in enumerate(findings, 1):
         d = f.to_dict()
         p = d["phase_attribution"]
+        loc = d["location"]
+        where = f"{loc['file']}:{loc['line']}" if loc.get("file") else f"line {loc['line']}"
         out.append(f"--- Finding #{i} " + "-" * 50)
         out.append(f"Vulnerability : {d['vulnerability_type']}  "
-                   f"(function {d['location']['function']}, line {d['location']['line']})")
+                   f"(function {loc['function']}, {where})")
         out.append(f"Risk score    : {d['risk_score']}/10")
         out.append("Root-cause    :")
         for line in d["root_cause_trace"]:

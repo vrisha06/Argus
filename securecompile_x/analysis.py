@@ -378,8 +378,14 @@ class Engine:
             return f"{f}(): receives tainted argument from caller"
         return None
 
+    def _ffile(self, name):
+        return getattr(self.ir.get(name), "file", None)
+
     def _flow(self, f, operand, sink_ins):
-        """Readable source->sink data-flow path, interprocedural where needed."""
+        """Readable source->sink data-flow path, interprocedural where needed.
+
+        When the path crosses a file boundary, function references are prefixed
+        with their source file (e.g. ``main.c:main() -> util.c:run(c)``)."""
         prefix = ""
         # interprocedural: tainted came in through a parameter
         pnames = [p for p, _ in self.ir[f].params]
@@ -387,7 +393,12 @@ class Engine:
             caller, cl = self.callers[f][0]
             src = self._origin_line(caller) or f"{caller}()"
             src = src.split(": ", 1)[-1] if ": " in src else src
-            prefix = f"{caller}() [{src}] -> {f}({operand}) -> "
+            cf, ff = self._ffile(caller), self._ffile(f)
+            if cf and ff and cf != ff:
+                caller_ref, f_ref = f"{cf}:{caller}", f"{ff}:{f}"
+            else:
+                caller_ref, f_ref = caller, f
+            prefix = f"{caller_ref}() [{src}] -> {f_ref}({operand}) -> "
         else:
             o = self._origin_line(f)
             if o:
