@@ -5,9 +5,11 @@
 > conditions" occurs, stop and report. When done, update this plan's status row
 > in `plans/README.md`.
 >
-> **Drift check (run first)**: repo is not under git. Before writing, confirm no
-> `requirements.txt` / `pyproject.toml` already exists at the repo root
-> (`ls requirements.txt pyproject.toml`). If one now exists, STOP and reconcile.
+> **Drift check (run first)**: `git diff --stat 516d782..HEAD -- securecompile_x/web.py`
+> If `web.py` changed since this plan was written, confirm its third-party
+> imports still match "Current state". Also confirm no `requirements.txt` /
+> `pyproject.toml` already exists at the repo root (`ls requirements.txt
+> pyproject.toml`); if one now exists, STOP and reconcile.
 
 ## Status
 
@@ -16,7 +18,7 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: dx
-- **Planned at**: commit `unavailable` (repo is not a git repository), 2026-10-11
+- **Planned at**: commit `516d782`, 2026-10-11
 
 ## Why this matters
 

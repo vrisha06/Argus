@@ -5,9 +5,9 @@
 > anything in "STOP conditions" occurs, stop and report. When done, update this
 > plan's status row in `plans/README.md`.
 >
-> **Drift check (run first)**: repo is not under git. Before editing, open
-> `securecompile_x/parser.py` and confirm the "Current state" excerpts below
-> match the live code. On a mismatch, STOP.
+> **Drift check (run first)**: `git diff --stat 516d782..HEAD -- securecompile_x/parser.py`
+> If `parser.py` changed since this plan was written, compare the "Current
+> state" excerpts against the live code. On a mismatch, STOP.
 
 ## Status
 
@@ -17,7 +17,7 @@
   must stay green)
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `unavailable` (repo is not a git repository), 2026-10-11
+- **Planned at**: commit `516d782`, 2026-10-11
 
 ## Why this matters
 
