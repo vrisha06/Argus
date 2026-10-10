@@ -22,7 +22,7 @@ honor its STOP conditions, and update your row when done.
 | 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | DONE (merged into master at `fefa50d`; reviewed & verified) |
 | 007 | Multi-file analysis: cross-file taint + per-file attribution (PRD stretch) | P3 | L | — | DONE (merged into master at `607e87f`; reviewed & verified, 5/5 suites green + live 2-file run) |
 | 008 | Multi-file support in the web app (API + React UI) | P3 | M | 007 | DONE (merged into master at `82e48d8`; reviewed & verified 6/6 suites + live browser multi-file UI) |
-| 009 | Upgrade Vite 5→8 to clear the esbuild dev-server advisory | P3 | S | — | TODO |
+| 009 | Upgrade Vite 5→8 to clear the esbuild dev-server advisory | P3 | S | — | DONE (merged into master at `a3cc1d8`; npm audit 0, build clean under vite 8.3.4, app verified in browser) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
