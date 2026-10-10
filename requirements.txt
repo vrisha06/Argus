@@ -1,0 +1,6 @@
+# Runtime dependencies for the SecureCompile-X web app (securecompile_x/web.py).
+# The CLI (python -m securecompile_x.cli) and the analysis engine use only the
+# Python standard library — no install needed for CLI-only use.
+fastapi>=0.115.8
+uvicorn>=0.34.0
+pydantic>=2.10.6
