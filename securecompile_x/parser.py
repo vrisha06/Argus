@@ -223,6 +223,10 @@ class Parser:
         if self.check("OP", "=") or self.check("OP", "+=") or self.check("OP", "-="):
             op = self.advance().value
             right = self.assignment()
+            if isinstance(right, _AssignExpr):
+                raise ParseError(
+                    f"{t.line}:{t.col}: chained assignment is not supported; "
+                    "split 'a = b = c' into separate statements")
             if op != "=":
                 right = A.Binary(op[0], left, right, t.line, t.col)
             return _AssignExpr(left, right, t.line, t.col)
@@ -279,6 +283,13 @@ class Parser:
                         args.append(self.expression())
                 self.expect("RPAREN")
                 node = A.Call(node.name, args, node.line, node.col)
+            elif self.peek().kind == "OP" and self.peek().value in ("++", "--") \
+                    and isinstance(node, (A.Var, A.Index, A.Unary)):
+                op = self.advance().value          # "++" or "--"
+                one = A.Num(1, t.line, t.col)
+                delta = A.Binary(op[0], node, one, t.line, t.col)  # node + 1 / node - 1
+                node = _AssignExpr(node, delta, t.line, t.col)
+                break   # i++ is a complete postfix expression; stop the loop
             else:
                 break
         return node
