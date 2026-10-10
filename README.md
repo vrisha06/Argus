@@ -61,9 +61,14 @@ cd frontend && npm run dev             # terminal 2 -> http://127.0.0.1:5173
 ### REST API
 | Method | Route | Body / returns |
 |---|---|---|
-| POST | `/api/analyze` | `{code, filename?}` → full JSON report |
+| POST | `/api/analyze` | `{code, filename?}` or `{files: [{name, code}, ...]}` → full JSON report |
 | GET | `/api/examples` | list of seeded cases |
 | GET | `/api/examples/{name}` | one example's source |
+
+The UI supports multiple files: use the add-file tabs to add, switch between,
+or remove translation units, then Analyze them together (cross-file findings
+show `file:line`). The single-file `{code, filename?}` body still works; sending
+`{files: [...]}` runs the multi-file pipeline.
 
 Interactive API docs at `http://127.0.0.1:8000/docs` (FastAPI/OpenAPI).
 

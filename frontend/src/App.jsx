@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { fetchExamples, fetchExample, analyze } from "./api.js";
+import { fetchExamples, fetchExample, analyzeMulti } from "./api.js";
 import FindingCard from "./components/FindingCard.jsx";
 
 const PHASES = ["Lexer", "Parser", "Semantic", "IR + CFG", "Security", "Report"];
@@ -18,11 +18,27 @@ int main() {
 `;
 
 export default function App() {
-  const [code, setCode] = useState(STARTER);
+  const [files, setFiles] = useState([{ name: "main.c", code: STARTER }]);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [examples, setExamples] = useState([]);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  const active = files[activeIdx];
+  const setActiveCode = (code) =>
+    setFiles((fs) => fs.map((f, i) => (i === activeIdx ? { ...f, code } : f)));
+  const setActiveName = (name) =>
+    setFiles((fs) => fs.map((f, i) => (i === activeIdx ? { ...f, name } : f)));
+  const addFile = () => {
+    setFiles((fs) => [...fs, { name: `file${fs.length + 1}.c`, code: "" }]);
+    setActiveIdx(files.length);
+  };
+  const removeFile = (idx) => {
+    if (files.length === 1) return;
+    setFiles((fs) => fs.filter((_, i) => i !== idx));
+    setActiveIdx((cur) => (cur >= idx && cur > 0 ? cur - 1 : cur));
+  };
 
   useEffect(() => {
     fetchExamples().then(setExamples).catch(() => {});
@@ -32,7 +48,7 @@ export default function App() {
     if (!name) return;
     try {
       const { code } = await fetchExample(name);
-      setCode(code);
+      setFiles((fs) => fs.map((f, i) => (i === activeIdx ? { name, code } : f)));
       setResult(null);
       setError(null);
     } catch (e) {
@@ -44,7 +60,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await analyze(code));
+      setResult(await analyzeMulti(files));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -74,6 +90,18 @@ export default function App() {
 
       <main>
         <section className="editor-pane">
+          <div className="filebar">
+            {files.map((f, i) => (
+              <span key={i} className={`filetab ${i === activeIdx ? "active" : ""}`}>
+                <button className="filetab-name" onClick={() => setActiveIdx(i)}>{f.name}</button>
+                {files.length > 1 && (
+                  <button className="filetab-x" title="remove file"
+                          onClick={() => removeFile(i)}>×</button>
+                )}
+              </span>
+            ))}
+            <button className="filetab-add" onClick={addFile} title="add file">+ file</button>
+          </div>
           <div className="pane-head">
             <label htmlFor="ex">Load example</label>
             <select id="ex" defaultValue="" onChange={(e) => onLoadExample(e.target.value)}>
@@ -84,6 +112,8 @@ export default function App() {
                 </option>
               ))}
             </select>
+            <input className="filename-input" value={active.name}
+                   onChange={(e) => setActiveName(e.target.value)} spellCheck={false} />
             <button className="primary" onClick={onAnalyze} disabled={busy}>
               {busy ? <><span className="spinner" />Analyzing…</> : "▶ Analyze"}
             </button>
@@ -91,8 +121,8 @@ export default function App() {
           <textarea
             className="code"
             spellCheck={false}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
+            value={active.code}
+            onChange={(e) => setActiveCode(e.target.value)}
           />
         </section>
 
