@@ -5,10 +5,10 @@
 > anything in "STOP conditions" occurs, stop and report — do not improvise.
 > When done, update this plan's status row in `plans/README.md`.
 >
-> **Drift check (run first)**: this repository is **not** under git (no commit
-> to diff against). Instead, before editing, open `securecompile_x/semantic.py`
-> and confirm the "Current state" excerpt below matches the live code. On a
-> mismatch, treat it as a STOP condition.
+> **Drift check (run first)**: `git diff --stat b51bd1b..HEAD -- securecompile_x/semantic.py`
+> If `semantic.py` changed since this plan was written, compare the "Current
+> state" excerpt against the live code before proceeding; on a mismatch, treat
+> it as a STOP condition.
 
 ## Status
 
@@ -17,7 +17,7 @@
 - **Risk**: LOW
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `unavailable` (repo is not a git repository; see Maintenance notes), 2026-10-11
+- **Planned at**: commit `b51bd1b`, 2026-10-11
 
 ## Why this matters
 
