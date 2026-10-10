@@ -18,6 +18,8 @@ honor its STOP conditions, and update your row when done.
 | 002 | Add PRD §10 lexer/parser/semantic unit tests | P1 | M | 001 | DONE (merged into master at `516d782`; reviewed & verified 10/10) |
 | 003 | Add a Python dependency manifest (`requirements.txt`) | P2 | S | — | DONE (merged into master at `b6e7b47`; reviewed & verified) |
 | 004 | Fix parser gaps: `i++`/`i--` and silent chained-assignment miscompile | P2 | M | — | DONE (merged into master at `b6e7b47`; reviewed & verified 13/13) |
+| 005 | Prefix `++`/`--` + chained-assignment full support (supersedes 004's rejection) | P2 | M | — | TODO |
+| 006 | GitHub Actions CI workflow (runs test suites + frontend build) | P2 | S | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rationale)
 
@@ -28,6 +30,20 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
   Land 001 first, or that single check will (correctly) fail until it does.
 - **003 is independent** and can land any time.
 - 001 and 003 can be done in parallel.
+
+## Scope decisions (2026-10-11 "fix remaining items" pass)
+
+- **Multi-file analysis** (PRD stretch goal): NOT selected for this pass — large
+  architectural effort (cross-TU symbol linking, cross-file call graph +
+  reachability), highest bug risk. Deferred as its own future multi-step plan.
+- **npm dev-only advisory** (esbuild GHSA-67mh-4wv8-2f99, moderate): REJECTED.
+  The only fix is `vite@8` — a 3-major-version breaking upgrade (5→8) — for a
+  **dev-server-only** issue with zero impact on the built/shipped app
+  (`npm audit --omit=dev` → 0). Not worth breaking the toolchain. Revisit only
+  if Vite is upgraded for other reasons.
+- **Path-sensitivity consolidation**: REJECTED (not a bug). `guards` (bounds
+  heuristic) and CFG `refine` (nullness) are not equivalent; merging them would
+  regress bounds-check suppression.
 
 ## Findings considered and rejected (so they aren't re-audited)
 
