@@ -17,9 +17,20 @@ call graph, and **compiler-phase attribution** for every finding.
 python -m securecompile_x.cli tests/bof_strcpy.c          # plain-text report
 python -m securecompile_x.cli tests/uif_interproc.c --json # machine-readable JSON
 python -m securecompile_x.cli file.c --out report.txt      # write to file
+python -m securecompile_x.cli main.c util.c               # analyse multiple files
 ```
 
 One command compiles and analyses. Exit code is non-zero when findings exist.
+
+### Multi-file analysis
+
+Pass several `.c` files to analyse them as one program (one global namespace —
+the subset has no `static`/`extern`). The files are linked into a single symbol
+table, call graph and IR, so taint, reachability and findings cross file
+boundaries, and each finding is attributed to its file (`file:line` in text,
+`location.file` in JSON). A function defined in two files is reported as a
+redefinition; the first definition wins. A single file behaves exactly as
+before.
 
 ## Quick start — Web app
 
