@@ -17,6 +17,7 @@ class Finding:
     def __init__(self, vclass, func, line, col):
         self.vclass = vclass        # buffer_overflow / use_after_free / ...
         self.func = func
+        self.file = None            # source file the finding is attributed to
         self.line = line
         self.col = col
         self.root_cause = []        # list[str]
@@ -37,7 +38,8 @@ class Finding:
         return {
             "vulnerability_type": _NAME[self.vclass],
             "class": self.vclass,
-            "location": {"function": self.func, "line": self.line, "col": self.col},
+            "location": {"file": self.file, "function": self.func,
+                         "line": self.line, "col": self.col},
             "root_cause_trace": self.root_cause,
             "data_flow_path": self.data_flow,
             "phase_attribution": {
@@ -192,6 +194,8 @@ class Engine:
             findings += self._unsafe_input_flow(f, irf)
         for fd in findings:
             fd.reachable = fd.func in reach
+            irf = self.ir.get(fd.func)
+            fd.file = getattr(irf, "file", None)
             self._score(fd)
         findings.sort(key=lambda x: (x.line, x.vclass))
         return findings
