@@ -11,6 +11,7 @@ Operands are strings: variable names ('x'), temporaries ('t3'), or constants
 materialised by 'const'/'str'/'addr' instructions."""
 
 from . import ast_nodes as A
+from .parser import AssignExpr
 
 
 class Instr:
@@ -198,21 +199,23 @@ class IRGenerator:
         self._emit("goto", None, [], l_top, st.line)
         self._emit("label", None, [], l_end, st.line)
 
-    def _gen_assign(self, st):
-        val = self._expr(st.value)
-        tgt = st.target
+    def _store(self, tgt, val, line):
         if isinstance(tgt, A.Var):
-            self._emit("copy", tgt.name, [val], None, st.line)
+            self._emit("copy", tgt.name, [val], None, line)
         elif isinstance(tgt, A.Index):
             arr = self._expr(tgt.array)
             idx = self._expr(tgt.index)
-            self._emit("index_store", None, [arr, idx, val], None, st.line)
+            self._emit("index_store", None, [arr, idx, val], None, line)
         elif isinstance(tgt, A.Unary) and tgt.op == "*":
             ptr = self._expr(tgt.operand)
-            self._emit("deref_store", None, [ptr, val], None, st.line)
+            self._emit("deref_store", None, [ptr, val], None, line)
         else:
             t = self._expr(tgt)
-            self._emit("copy", t, [val], None, st.line)
+            self._emit("copy", t, [val], None, line)
+
+    def _gen_assign(self, st):
+        val = self._expr(st.value)
+        self._store(st.target, val, st.line)
 
     def _guard_vars(self, cond):
         out = set()
@@ -260,6 +263,10 @@ class IRGenerator:
         if isinstance(e, A.Call):
             args = [self._expr(a) for a in e.args]
             t = self.new_temp(); self._emit("call", t, args, e.name, e.line); return t
+        if isinstance(e, AssignExpr):
+            val = self._expr(e.value)
+            self._store(e.target, val, e.line)
+            return val
         return None
 
     def _operand_ref(self, e):

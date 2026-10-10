@@ -3,6 +3,7 @@ table (type/scope/allocation info), call graph, undeclared-name detection."""
 
 from . import ast_nodes as A
 from .rules import LIBRARY_MODELS
+from .parser import AssignExpr
 
 
 class Symbol:
@@ -210,6 +211,9 @@ class SemanticAnalyzer:
             self._expr(e.operand)
         elif isinstance(e, A.Index):
             self._expr(e.array); self._expr(e.index)
+        elif isinstance(e, AssignExpr):
+            self._expr(e.target)
+            self._expr(e.value)
         elif isinstance(e, A.Call):
             # FR-3.3: record call edge
             self.callgraph.add_edge(self.cur_func, e.name, e.line)
