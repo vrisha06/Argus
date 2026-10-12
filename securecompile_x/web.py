@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import ai, history
 from .cli import compile_and_analyze, compile_and_analyze_multi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,6 +35,14 @@ class FileInput(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
+    code: str | None = None
+    filename: str = "input.c"
+    files: list[FileInput] | None = None
+    record: bool = False          # persist this run to the analytics history
+    user: str | None = None       # per-browser id for self-analytics
+
+
+class AiReviewRequest(BaseModel):
     code: str | None = None
     filename: str = "input.c"
     files: list[FileInput] | None = None
@@ -82,6 +91,17 @@ def analyze(req: AnalyzeRequest):
     else:
         findings, diagnostics = compile_and_analyze(req.code or "", req.filename)
         source_file = req.filename
+
+    if req.record:
+        # Never let a history failure break the analysis response.
+        try:
+            code = _combined_source(req.files) if req.files else (req.code or "")
+            loc = code.count("\n") + 1 if code else 0
+            history.record_run(req.user, source_file, loc,
+                               [f.to_dict() for f in findings], diagnostics)
+        except Exception:  # pragma: no cover - analytics is best-effort
+            pass
+
     return {
         "tool": "SecureCompile-X",
         "source_file": source_file,
@@ -89,6 +109,50 @@ def analyze(req: AnalyzeRequest):
         "finding_count": len(findings),
         "findings": [f.to_dict() for f in findings],
     }
+
+
+@app.get("/api/history")
+def get_history(user: str = "local"):
+    return history.get_stats(user)
+
+
+@app.delete("/api/history")
+def clear_history(user: str = "local"):
+    history.clear(user)
+    return {"ok": True}
+
+
+def _combined_source(files):
+    """Join multiple units into one annotated blob for the AI prompt, so the
+    model sees file boundaries and can reference lines meaningfully."""
+    return "\n\n".join(f"/* ==== {f.name} ==== */\n{f.code}" for f in files)
+
+
+@app.post("/api/ai-review")
+def ai_review(req: AiReviewRequest):
+    """Run the compiler engine, then ask Gemini (free tier) for plain-English
+    suggestions that complement the structured findings. Degrades gracefully
+    when no API key is configured (returns available=false)."""
+    if req.files:
+        units = [(f.name, f.code) for f in req.files]
+        findings, _ = compile_and_analyze_multi(units)
+        source_file = ", ".join(f.name for f in req.files)
+        code = _combined_source(req.files)
+    else:
+        findings, _ = compile_and_analyze(req.code or "", req.filename)
+        source_file = req.filename
+        code = req.code or ""
+
+    result = ai.review(code, [f.to_dict() for f in findings], source_file)
+    result["source_file"] = source_file
+    result["finding_count"] = len(findings)
+    return result
+
+
+@app.get("/api/ai-status")
+def ai_status():
+    """Lets the frontend show whether the AI assist is configured."""
+    return {"available": ai.is_available(), "model": ai.model_name()}
 
 
 # Serve the built React app (frontend/dist). API routes above take precedence

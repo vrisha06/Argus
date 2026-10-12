@@ -7,12 +7,13 @@ function riskTier(score) {
   return { label: "LOW", cls: "low" };
 }
 
-export default function FindingCard({ finding, index }) {
+export default function FindingCard({ finding, index, id, highlighted }) {
   const f = finding;
   const tier = riskTier(f.risk_score);
   const p = f.phase_attribution;
   return (
-    <article className={`card ${tier.cls}`} style={{ animationDelay: `${index * 70}ms` }}>
+    <article id={id} className={`card ${tier.cls} ${highlighted ? "flash" : ""}`}
+             style={{ animationDelay: `${index * 70}ms` }}>
       <div className="card-head">
         <span className="idx">#{index + 1}</span>
         <h3>{f.vulnerability_type}</h3>

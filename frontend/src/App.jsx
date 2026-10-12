@@ -1,8 +1,66 @@
-import React, { useEffect, useState } from "react";
-import { fetchExamples, fetchExample, analyzeMulti } from "./api.js";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { fetchExamples, fetchExample, analyze, analyzeMulti, aiReview, fetchAiStatus, getUserId } from "./api.js";
 import FindingCard from "./components/FindingCard.jsx";
+import AiPanel from "./components/AiPanel.jsx";
+import CodeEditor from "./components/CodeEditor.jsx";
+import Analytics from "./components/Analytics.jsx";
 
 const PHASES = ["Lexer", "Parser", "Semantic", "IR + CFG", "Security", "Report"];
+
+// Map a 0–10 risk score to a marker severity.
+const riskSeverity = (s) => (s >= 7 ? "high" : s >= 4 ? "medium" : "low");
+// Short phase label for the gutter chips (e.g. "Security Analysis" -> "Security").
+const shortPhase = (p) => (!p ? "General" : /security/i.test(p) ? "Security"
+  : /ir/i.test(p) ? "IR" : p.split(" ")[0]);
+// Pull the 1-based line out of a diagnostic string like "f.c: 2:1: msg".
+const diagLine = (msg) => {
+  const m = msg.match(/:\s*(\d+):(\d+):/);
+  return m ? parseInt(m[1], 10) : null;
+};
+
+// Plain-text report mirroring the CLI's report.to_text (for export, #5).
+function reportText(r) {
+  const bar = "=".repeat(60);
+  const out = [bar, "SecureCompile-X  -  Security Report", `Source: ${r.source_file}`, bar];
+  Object.entries(r.diagnostics || {}).forEach(([phase, errs]) => {
+    if (errs && errs.length) {
+      out.push(`[${phase}] diagnostics:`);
+      errs.forEach((e) => out.push(`    - ${e}`));
+    }
+  });
+  if (!r.findings || !r.findings.length) {
+    out.push("", "No vulnerabilities detected. (clean)", "");
+    return out.join("\n");
+  }
+  out.push("", `${r.findings.length} finding(s):`, "");
+  r.findings.forEach((d, i) => {
+    const p = d.phase_attribution, loc = d.location;
+    const where = loc.file ? `${loc.file}:${loc.line}` : `line ${loc.line}`;
+    out.push(`--- Finding #${i + 1} ` + "-".repeat(40));
+    out.push(`Vulnerability : ${d.vulnerability_type}  (function ${loc.function}, ${where})`);
+    out.push(`Risk score    : ${d.risk_score}/10`);
+    out.push("Root-cause    :");
+    d.root_cause_trace.forEach((l) => out.push(`    ${l}`));
+    out.push(`Data-flow     : ${d.data_flow_path}`);
+    out.push(`Phase         : ${p.phase}  (needs ${p.needs})`);
+    out.push(`  why earlier : ${p.why}`);
+    out.push(`Reachable     : ${d.reachable_from_main ? "yes" : "no"} (from main)`);
+    out.push(`Suggested fix : ${d.suggested_fix}`);
+    out.push("");
+  });
+  return out.join("\n");
+}
+
+function downloadBlob(filename, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Live-analysis debounce windows (ms after the last keystroke).
+const ENGINE_DELAY = 650;   // the compiler engine is instant, so react fast
+const AI_DELAY = 1800;      // Gemini is a network call — wait for a real pause
 
 const STARTER = `/* Try me, or load a seeded example. */
 void copy_name(char* input) {
@@ -25,7 +83,79 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  // Theme (light / dark) — defaults to the OS preference, then persists.
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem("scx-theme");
+      if (saved === "light" || saved === "dark") return saved;
+    } catch { /* ignore */ }
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try { localStorage.setItem("scx-theme", theme); } catch { /* ignore */ }
+  }, [theme]);
+
+  // Resizable split between the editor and report panes (percent width of editor).
+  const mainRef = useRef(null);
+  const [splitPct, setSplitPct] = useState(() => {
+    try {
+      const v = parseFloat(localStorage.getItem("scx-split"));
+      if (v >= 20 && v <= 80) return v;
+    } catch { /* ignore */ }
+    return 50;
+  });
+  useEffect(() => {
+    try { localStorage.setItem("scx-split", String(splitPct)); } catch { /* ignore */ }
+  }, [splitPct]);
+  function startDrag(e) {
+    e.preventDefault();
+    const move = (ev) => {
+      const r = mainRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const pct = ((ev.clientX - r.left) / r.width) * 100;
+      setSplitPct(Math.max(25, Math.min(75, pct)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing");
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  // Live analysis + AI assist state.
+  const [liveOn, setLiveOn] = useState(true);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [aiOn, setAiOn] = useState(true);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const aiAbort = useRef(null);
+
+  // Cross-panel linking: which right-panel detail is flashing from a marker click.
+  const [highlightId, setHighlightId] = useState(null);
+
+  // View switch + analytics refresh trigger.
+  const [view, setView] = useState("analyze");   // "analyze" | "analytics"
+  const [analyticsKey, setAnalyticsKey] = useState(0);
+
+  // Analyze the active tab only, or link all open tabs (PRD cross-file demo).
+  const [scopeAll, setScopeAll] = useState(() => {
+    try { return localStorage.getItem("scx-scope-all") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("scx-scope-all", scopeAll ? "1" : "0"); } catch { /* ignore */ }
+  }, [scopeAll]);
+
   const active = files[activeIdx];
+  // Only the file the user is on gets analyzed — unless "scan all tabs" is on.
+  const activeHasCode = active.code.trim().length > 0;
+  const filesKey = JSON.stringify(files);
+
   const setActiveCode = (code) =>
     setFiles((fs) => fs.map((f, i) => (i === activeIdx ? { ...f, code } : f)));
   const setActiveName = (name) =>
@@ -42,7 +172,51 @@ export default function App() {
 
   useEffect(() => {
     fetchExamples().then(setExamples).catch(() => {});
+    fetchAiStatus().then(setAiStatus).catch(() => {});
   }, []);
+
+  // Live engine detection: debounced. Active file only, or all tabs if scopeAll.
+  useEffect(() => {
+    if (!liveOn || !activeHasCode) return;
+    const t = setTimeout(async () => {
+      setLiveBusy(true);
+      try {
+        const r = scopeAll ? await analyzeMulti(files)
+                           : await analyze(active.code, active.name);
+        setResult(r);
+        setError(null);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLiveBusy(false);
+      }
+    }, ENGINE_DELAY);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesKey, active.code, active.name, liveOn, scopeAll]);
+
+  // AI assist on the ACTIVE file: longer debounce, aborts any in-flight request.
+  useEffect(() => {
+    if (!aiOn || !activeHasCode) return;
+    if (aiStatus && aiStatus.available === false) return; // no key: show note only
+    const t = setTimeout(async () => {
+      if (aiAbort.current) aiAbort.current.abort();
+      const ctrl = new AbortController();
+      aiAbort.current = ctrl;
+      setAiBusy(true);
+      setAiError(null);
+      try {
+        const r = await aiReview([active], ctrl.signal);
+        setAiResult(r);
+      } catch (e) {
+        if (e.name !== "AbortError") setAiError(e.message);
+      } finally {
+        if (aiAbort.current === ctrl) setAiBusy(false);
+      }
+    }, AI_DELAY);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active.code, active.name, aiOn, aiStatus]);
 
   async function onLoadExample(name) {
     if (!name) return;
@@ -50,17 +224,22 @@ export default function App() {
       const { code } = await fetchExample(name);
       setFiles((fs) => fs.map((f, i) => (i === activeIdx ? { name, code } : f)));
       setResult(null);
+      setAiResult(null);
       setError(null);
     } catch (e) {
       setError(e.message);
     }
   }
 
+  // Manual Analyze: this is the one that gets RECORDED to self-analytics.
   async function onAnalyze() {
     setBusy(true);
     setError(null);
+    const opts = { record: true, user: getUserId() };
     try {
-      setResult(await analyzeMulti(files));
+      setResult(scopeAll ? await analyzeMulti(files, opts)
+                         : await analyze(active.code, active.name, opts));
+      setAnalyticsKey((k) => k + 1);   // so the dashboard reflects this run
     } catch (e) {
       setError(e.message);
     } finally {
@@ -68,32 +247,120 @@ export default function App() {
     }
   }
 
+  // Switching tabs: drop the previous file's results so findings never look
+  // like they belong to the file now on screen (live analysis repopulates).
+  function switchTo(idx) {
+    if (idx === activeIdx) return;
+    setActiveIdx(idx);
+    setResult(null);
+    setAiResult(null);
+    setError(null);
+  }
+
   const diag = result?.diagnostics || {};
   const diagEntries = Object.entries(diag).filter(([, v]) => v && v.length);
+  const hasDiag = diagEntries.length > 0;
+
+  // Hybrid markers for the editor gutter: the engine gives exact line + phase
+  // (authoritative), Gemini adds predictive suggestions. Each marker links to a
+  // detailed card on the right by id.
+  const markers = useMemo(() => {
+    const out = [];
+    if (result) {
+      // Markers anchor to the editor, so only keep this file's issues as dots;
+      // cross-file results still render as cards on the right.
+      (result.findings || []).forEach((f, i) => {
+        const ffile = f.location?.file;
+        if (ffile && ffile !== active.name) return;
+        out.push({
+          id: `finding-${i}`, line: f.location?.line,
+          severity: riskSeverity(f.risk_score),
+          phase: shortPhase(f.phase_attribution?.phase), title: f.vulnerability_type,
+        });
+      });
+      Object.entries(result.diagnostics || {}).forEach(([phase, errs]) => {
+        (errs || []).forEach((e, i) => {
+          const line = diagLine(e);
+          const fname = e.split(":")[0].trim();
+          if (!line || (fname && fname !== active.name && /\.\w+$/.test(fname))) return;
+          out.push({
+            id: `diag-${phase}-${i}`, line, severity: "high", phase,
+            title: e.replace(/^.*?:\s*\d+:\d+:\s*/, "") || e,
+          });
+        });
+      });
+    }
+    (aiResult?.suggestions || []).forEach((s, i) => {
+      if (s.line) out.push({
+        id: `ai-${i}`, line: s.line, severity: s.severity,
+        phase: s.phase || "General", title: s.title, ai: true,
+      });
+    });
+    return out;
+  }, [result, aiResult, active.name]);
+
+  // Apply a Gemini suggestion's fix into the active file (#3).
+  function applyFix(s) {
+    if (!s?.fix) return;
+    setFiles((fs) => fs.map((f, i) => {
+      if (i !== activeIdx) return f;
+      const fixLines = s.fix.split("\n");
+      const lines = f.code.split("\n");
+      if (s.line && s.line >= 1 && s.line <= lines.length) {
+        lines.splice(s.line - 1, 1, ...fixLines);   // replace the referenced line
+        return { ...f, code: lines.join("\n") };
+      }
+      const sep = f.code && !f.code.endsWith("\n") ? "\n" : "";
+      return { ...f, code: f.code + sep + s.fix + "\n" };   // else append
+    }));
+  }
+
+  function onMarkerClick(id) {
+    setHighlightId(id);
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 1800);
+  }
+  const aiAvailable = aiResult ? aiResult.available : aiStatus?.available;
 
   return (
     <div className="app">
       <header>
         <div className="brand">
-          <span className="logo">⟡</span>
           <div>
             <h1>SecureCompile-X</h1>
             <p className="tag">Secure Code. Smarter Compilers. Safer Software.</p>
           </div>
         </div>
-        <nav className="pipeline" title="Six-stage compiler pipeline">
-          {PHASES.map((p) => (
-            <span key={p} className={p === "Security" ? "hot" : ""}>{p}</span>
-          ))}
-        </nav>
+        <div className="header-right">
+          <div className="viewswitch">
+            <button className={view === "analyze" ? "active" : ""}
+                    onClick={() => setView("analyze")}>Analyzer</button>
+            <button className={view === "analytics" ? "active" : ""}
+                    onClick={() => setView("analytics")}>Analytics</button>
+          </div>
+          <button
+            className="theme-toggle"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            title="Toggle light / dark mode"
+          >
+            {theme === "dark" ? "☀ Light" : "☾ Dark"}
+          </button>
+        </div>
       </header>
 
-      <main>
-        <section className="editor-pane">
+      {view === "analytics" ? (
+        <main className="analytics-main">
+          <Analytics userId={getUserId()} refreshKey={analyticsKey} />
+        </main>
+      ) : (
+      <main ref={mainRef}>
+        <section className="editor-pane" style={{ width: `${splitPct}%` }}>
           <div className="filebar">
             {files.map((f, i) => (
               <span key={i} className={`filetab ${i === activeIdx ? "active" : ""}`}>
-                <button className="filetab-name" onClick={() => setActiveIdx(i)}>{f.name}</button>
+                <button className="filetab-name" onClick={() => switchTo(i)}>{f.name}</button>
                 {files.length > 1 && (
                   <button className="filetab-x" title="remove file"
                           onClick={() => removeFile(i)}>×</button>
@@ -118,13 +385,38 @@ export default function App() {
               {busy ? <><span className="spinner" />Analyzing…</> : "▶ Analyze"}
             </button>
           </div>
-          <textarea
-            className="code"
-            spellCheck={false}
-            value={active.code}
-            onChange={(e) => setActiveCode(e.target.value)}
-          />
+          <CodeEditor value={active.code} onChange={setActiveCode}
+                      markers={markers} onMarkerClick={onMarkerClick} />
+          <div className="live-bar">
+            <label className="toggle">
+              <input type="checkbox" checked={liveOn}
+                     onChange={(e) => setLiveOn(e.target.checked)} />
+              <span className="live-dot" /> Live detection
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={aiOn}
+                     onChange={(e) => setAiOn(e.target.checked)} />
+              <span className="ai-spark">✦</span> AI suggestions
+            </label>
+            <label className="toggle" title="Analyze every open tab together (cross-file)">
+              <input type="checkbox" checked={scopeAll}
+                     onChange={(e) => setScopeAll(e.target.checked)} />
+              Scan all tabs
+            </label>
+            <span className="live-status">
+              {liveBusy ? <><span className="spinner" />analyzing…</>
+                : aiBusy ? <><span className="spinner" />AI reviewing…</>
+                : liveOn ? "up to date" : "paused"}
+            </span>
+          </div>
         </section>
+
+        <div
+          className="gutter"
+          onPointerDown={startDrag}
+          onDoubleClick={() => setSplitPct(50)}
+          title="Drag to resize · double-click to reset"
+        />
 
         <section className="report-pane">
           {error && <div className="summary err">⚠ {error}</div>}
@@ -138,6 +430,12 @@ export default function App() {
                 <li><b>Null-Pointer Dereference</b> — a <code>malloc</code>/null pointer dereferenced with no guard</li>
                 <li><b>Unsafe Input Flow</b> — untrusted input reaching a command sink</li>
               </ul>
+              <h4>Live as you type</h4>
+              <p className="intro-note">
+                Detection runs automatically a moment after you stop typing — the
+                compiler engine flags issues, and <b>AI suggestions</b> explain
+                what may break later and how to fix it now.
+              </p>
               <h4>Compiler-phase attribution</h4>
               <p className="intro-note">Each finding names the earliest phase that could detect it:</p>
               <div className="intro-pipeline">
@@ -145,28 +443,36 @@ export default function App() {
                   <span key={p} className={p === "Security" ? "phase-chip" : "intro-chip"}>{p}</span>
                 ))}
               </div>
-              <h4>Risk score</h4>
-              <p className="intro-note">
-                Every finding is scored 0–10 from input origin, reachability from
-                <code> main()</code>, and mitigating checks on the path.
-              </p>
               <p className="intro-cta">
-                Load a seeded example above, or paste your own C, then click <b>Analyze</b>.
+                Load a seeded example above, or just start typing C.
               </p>
             </div>
           )}
 
           {result && (
             <>
-              <div className={`summary ${result.finding_count ? "found" : "clean"}`}>
-                {result.finding_count === 0 ? (
-                  <span>✓ No vulnerabilities detected — <b>clean</b>.</span>
-                ) : (
+              <div className="report-tools">
+                <span className="rt-label">Export</span>
+                <button onClick={() => downloadBlob("securecompile-report.json",
+                  JSON.stringify(result, null, 2), "application/json")}>JSON</button>
+                <button onClick={() => downloadBlob("securecompile-report.txt",
+                  reportText(result), "text/plain")}>TXT</button>
+              </div>
+              <div className={`summary ${result.finding_count ? "found" : hasDiag ? "warn" : "clean"}`}>
+                {result.finding_count > 0 ? (
                   <span>
                     <b>{result.finding_count}</b> finding
                     {result.finding_count > 1 ? "s" : ""} in{" "}
                     <code>{result.source_file}</code>
                   </span>
+                ) : hasDiag ? (
+                  <span>
+                    ⚠ Compiler errors — see <b>diagnostics</b> below. The code
+                    doesn&apos;t fully parse, so the vulnerability scan is
+                    incomplete, not a clean result.
+                  </span>
+                ) : (
+                  <span>✓ No vulnerabilities detected — <b>clean</b>.</span>
                 )}
               </div>
 
@@ -176,7 +482,10 @@ export default function App() {
                   {diagEntries.map(([phase, errs]) => (
                     <div key={phase} className="diag-group">
                       <span className="diag-phase">{phase}</span>
-                      <ul>{errs.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                      <ul>{errs.map((e, i) => (
+                        <li key={i} id={`diag-${phase}-${i}`}
+                            className={highlightId === `diag-${phase}-${i}` ? "flash" : ""}>{e}</li>
+                      ))}</ul>
                     </div>
                   ))}
                 </div>
@@ -184,13 +493,25 @@ export default function App() {
 
               <div className="findings">
                 {result.findings.map((f, i) => (
-                  <FindingCard key={i} finding={f} index={i} />
+                  <FindingCard key={i} finding={f} index={i}
+                               id={`finding-${i}`} highlighted={highlightId === `finding-${i}`} />
                 ))}
               </div>
             </>
           )}
+
+          <AiPanel
+            status={aiStatus}
+            result={aiResult}
+            busy={aiBusy}
+            error={aiError}
+            enabled={aiOn && (activeHasCode || aiAvailable === false)}
+            highlightId={highlightId}
+            onApplyFix={applyFix}
+          />
         </section>
       </main>
+      )}
     </div>
   );
 }

@@ -7,3 +7,12 @@ __pycache__/
 
 # Claude Code worktrees / session data
 .claude/
+
+# Local secrets (API keys) — keep .env.example, ignore the real .env
+.env
+
+# Local analytics database (per-user history)
+analytics.db
+
+# Stale nested duplicate copy of the project (has its own .git)
+Compiler_project_vrisha/
