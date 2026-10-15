@@ -1,4 +1,4 @@
-# SecureCompile-X — Project Overview
+# Argus — Project Overview
 
 **Compiler-Based Vulnerability Detection and Root-Cause Analysis**
 *Secure Code. Smarter Compilers. Safer Software.*
@@ -19,7 +19,7 @@ development history, and the known limitations.
 
 ## 1. What it is
 
-SecureCompile-X is a C compiler **front-end + middle-end** that, instead of
+Argus is a C compiler **front-end + middle-end** that, instead of
 emitting machine code, detects **security vulnerabilities** during compilation
 and tells the developer **which compiler phase first made each one visible**.
 

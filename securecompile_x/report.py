@@ -6,7 +6,7 @@ import json
 
 def to_json(findings, source_file, diagnostics):
     return json.dumps({
-        "tool": "SecureCompile-X",
+        "tool": "Argus",
         "source_file": source_file,
         "diagnostics": diagnostics,
         "finding_count": len(findings),
@@ -17,7 +17,7 @@ def to_json(findings, source_file, diagnostics):
 def to_text(findings, source_file, diagnostics=None):
     out = []
     out.append("=" * 70)
-    out.append("SecureCompile-X  -  Security Report")
+    out.append("Argus  -  Security Report")
     out.append(f"Source: {source_file}")
     out.append("=" * 70)
     if diagnostics:

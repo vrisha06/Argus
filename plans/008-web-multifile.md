@@ -40,7 +40,7 @@ class AnalyzeRequest(BaseModel):
 def analyze(req: AnalyzeRequest):
     findings, diagnostics = compile_and_analyze(req.code, req.filename)
     return {
-        "tool": "SecureCompile-X",
+        "tool": "Argus",
         "source_file": req.filename,
         "diagnostics": diagnostics,
         "finding_count": len(findings),
@@ -129,7 +129,7 @@ def analyze(req: AnalyzeRequest):
         findings, diagnostics = compile_and_analyze(req.code or "", req.filename)
         source_file = req.filename
     return {
-        "tool": "SecureCompile-X",
+        "tool": "Argus",
         "source_file": source_file,
         "diagnostics": diagnostics,
         "finding_count": len(findings),

@@ -1,5 +1,5 @@
 {
-  "tool": "SecureCompile-X",
+  "tool": "Argus",
   "source_file": "tests/uif_interproc.c",
   "diagnostics": {
     "Lexer": [],

@@ -1,4 +1,4 @@
-// Thin client for the SecureCompile-X FastAPI backend.
+// Thin client for the Argus FastAPI backend.
 
 export async function fetchExamples() {
   const r = await fetch("/api/examples");
@@ -70,8 +70,44 @@ export async function aiReview(files, signal) {
   return r.json();
 }
 
+// Proof-of-Vulnerability: synthesise a triggering input/trace per finding.
+export async function generatePov(code, filename = "input.c", signal) {
+  const r = await fetch("/api/pov", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, filename }),
+    signal,
+  });
+  if (!r.ok) throw new Error(`pov failed (${r.status})`);
+  return r.json();
+}
+
+// Glass-box: serialise every compiler stage for the current source.
+export async function inspectPipeline(code, filename = "input.c", signal) {
+  const r = await fetch("/api/inspect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, filename }),
+    signal,
+  });
+  if (!r.ok) throw new Error(`inspect failed (${r.status})`);
+  return r.json();
+}
+
 export async function fetchAiStatus() {
   const r = await fetch("/api/ai-status");
   if (!r.ok) throw new Error("failed to load ai status");
+  return r.json();
+}
+
+// Robust "apply all": Gemini returns the whole corrected file.
+export async function aiFix(code, filename = "input.c", signal) {
+  const r = await fetch("/api/ai-fix", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, filename }),
+    signal,
+  });
+  if (!r.ok) throw new Error(`ai fix failed (${r.status})`);
   return r.json();
 }

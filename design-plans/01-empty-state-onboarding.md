@@ -1,4 +1,4 @@
-# Replace the idle report pane's single-line hint with an onboarding panel that teaches what SecureCompile-X detects
+# Replace the idle report pane's single-line hint with an onboarding panel that teaches what Argus detects
 
 Written against: unavailable (workspace is not a git repository)
 
@@ -39,7 +39,7 @@ New composition `.intro` (and small children) is required because the current id
      ```jsx
      {!result && !error && (
        <div className="intro">
-         <h4>What SecureCompile-X finds</h4>
+         <h4>What Argus finds</h4>
          <ul className="intro-classes">
            <li><b>Buffer Overflow</b> — tainted or unbounded data reaching a copy/sink</li>
            <li><b>Use-After-Free</b> — a pointer used after <code>free</code>, or a double free</li>

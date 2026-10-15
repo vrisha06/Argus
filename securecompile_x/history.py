@@ -1,4 +1,4 @@
-"""Self-analytics store for SecureCompile-X.
+"""Self-analytics store for Argus.
 
 Persists every *manual* analysis run (the Analyze button) to a local SQLite
 database and aggregates it into "what mistakes do I make most" statistics —

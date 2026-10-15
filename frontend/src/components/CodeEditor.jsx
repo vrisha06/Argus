@@ -10,7 +10,7 @@ const KEYWORDS = [
 ];
 
 // Standard-library functions the analyzer models (sources, sinks, allocators)
-// plus common companions — so completions match what SecureCompile-X understands.
+// plus common companions — so completions match what Argus understands.
 const FUNCTIONS = [
   "malloc", "calloc", "realloc", "free", "scanf", "sscanf", "fscanf", "printf",
   "fprintf", "sprintf", "snprintf", "puts", "gets", "fgets", "getchar",

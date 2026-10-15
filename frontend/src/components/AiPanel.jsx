@@ -3,10 +3,11 @@ import React from "react";
 // Renders the Gemini-powered live suggestions. Detection is still done by the
 // compiler engine (the finding cards); this panel adds plain-English guidance
 // about issues that "may cause problems later" so they can be fixed now.
-export default function AiPanel({ status, result, busy, error, enabled, highlightId, onApplyFix }) {
+export default function AiPanel({ status, result, busy, error, enabled, highlightId, onApplyFix, onApplyAll, applyingAll }) {
   if (!enabled) return null;
 
   const available = result ? result.available : status?.available;
+  const fixCount = (result?.suggestions || []).filter((s) => s.fix).length;
 
   return (
     <div className="ai-panel">
@@ -15,9 +16,17 @@ export default function AiPanel({ status, result, busy, error, enabled, highligh
           <span className="ai-spark">✦</span> AI suggestions
           {busy && <span className="ai-thinking"><span className="spinner" />thinking…</span>}
         </h4>
-        {available && (status?.model || result?.model) && (
-          <span className="ai-model">{result?.model || status?.model}</span>
-        )}
+        <div className="ai-head-right">
+          {onApplyAll && (fixCount > 0 || applyingAll) && (
+            <button className="ai-apply-all" onClick={onApplyAll} disabled={applyingAll}
+                    title="Let AI rewrite the file with every issue fixed">
+              {applyingAll ? <><span className="spinner" />Fixing…</> : "✓ Fix all with AI"}
+            </button>
+          )}
+          {available && (status?.model || result?.model) && (
+            <span className="ai-model">{result?.model || status?.model}</span>
+          )}
+        </div>
       </div>
 
       {available === false && (

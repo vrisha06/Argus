@@ -1,4 +1,4 @@
-"""Web layer for SecureCompile-X: a FastAPI service wrapping the compiler
+"""Web layer for Argus: a FastAPI service wrapping the compiler
 pipeline, plus a static single-page frontend.
 
 Run:
@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, history
+from . import ai, history, inspect_pipeline, pov
 from .cli import compile_and_analyze, compile_and_analyze_multi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +24,7 @@ FRONTEND = os.path.join(ROOT, "frontend")
 DIST = os.path.join(FRONTEND, "dist")       # Vite production build
 TESTS = os.path.join(ROOT, "tests")
 
-app = FastAPI(title="SecureCompile-X", version="1.0.0",
+app = FastAPI(title="Argus", version="1.0.0",
               description="Compiler-based C vulnerability detection and "
                           "root-cause analysis.")
 
@@ -103,7 +103,7 @@ def analyze(req: AnalyzeRequest):
             pass
 
     return {
-        "tool": "SecureCompile-X",
+        "tool": "Argus",
         "source_file": source_file,
         "diagnostics": diagnostics,
         "finding_count": len(findings),
@@ -147,6 +147,64 @@ def ai_review(req: AiReviewRequest):
     result["source_file"] = source_file
     result["finding_count"] = len(findings)
     return result
+
+
+class AiFixRequest(BaseModel):
+    code: str = ""
+    filename: str = "input.c"
+
+
+def _issue_count(findings, diagnostics):
+    return len(findings) + sum(len(v or []) for v in diagnostics.values())
+
+
+@app.post("/api/ai-fix")
+def ai_fix(req: AiFixRequest):
+    """Return a fully corrected version of the code (robust "apply all fixes").
+    Asks Gemini to rewrite the whole file, then VERIFIES the result with the
+    engine and does one more pass feeding back any remaining errors — so the
+    output converges to zero findings/diagnostics within this C subset."""
+    name = req.filename
+    findings, _ = compile_and_analyze(req.code or "", name)
+    result = ai.fix_code(req.code or "", [f.to_dict() for f in findings], name)
+    if result.get("error") or not result.get("code"):
+        return result
+
+    # Verify + one corrective pass if the engine still reports problems.
+    for _ in range(2):
+        f2, d2 = compile_and_analyze(result["code"], name)
+        if _issue_count(f2, d2) == 0:
+            break
+        remaining = [m for errs in d2.values() for m in errs]
+        retry = ai.fix_code(result["code"], [f.to_dict() for f in f2], name,
+                            remaining=remaining)
+        if retry.get("error") or not retry.get("code"):
+            break   # keep the best result we have
+        result = retry
+    return result
+
+
+class PovRequest(BaseModel):
+    code: str = ""
+    filename: str = "input.c"
+
+
+@app.post("/api/pov")
+def pov_endpoint(req: PovRequest):
+    """Proof-of-Vulnerability: synthesise a concrete triggering input / trace for
+    each finding, and mark unreachable ones as unconfirmed."""
+    return pov.generate_pov(req.code or "", req.filename)
+
+
+class InspectRequest(BaseModel):
+    code: str = ""
+    filename: str = "input.c"
+
+
+@app.post("/api/inspect")
+def inspect_endpoint(req: InspectRequest):
+    """Glass-box view: serialise every compiler stage for the given source."""
+    return inspect_pipeline.inspect_source(req.code or "", req.filename)
 
 
 @app.get("/api/ai-status")

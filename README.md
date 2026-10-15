@@ -1,4 +1,4 @@
-# SecureCompile-X
+# Argus
 
 **Compiler-Based Vulnerability Detection and Root-Cause Analysis**
 *Secure Code. Smarter Compilers. Safer Software.*

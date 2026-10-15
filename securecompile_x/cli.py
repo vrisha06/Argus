@@ -54,7 +54,7 @@ def compile_and_analyze_multi(units):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="securecompile-x",
+    ap = argparse.ArgumentParser(prog="argus",
                                  description="Compiler-based C vulnerability detector")
     ap.add_argument("file", nargs="+",
                     help="one or more C source files (.c) in the supported subset")

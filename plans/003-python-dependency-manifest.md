@@ -97,7 +97,7 @@ Create `requirements.txt` at the repo root with the web-app dependencies pinned
 to a `>=`-with-known-good lower bound. Add a comment noting the CLI needs none:
 
 ```
-# Runtime dependencies for the SecureCompile-X web app (securecompile_x/web.py).
+# Runtime dependencies for the Argus web app (securecompile_x/web.py).
 # The CLI (python -m securecompile_x.cli) and the analysis engine use only the
 # Python standard library — no install needed for CLI-only use.
 fastapi>=0.115.8

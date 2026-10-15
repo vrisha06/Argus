@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { fetchExamples, fetchExample, analyze, analyzeMulti, aiReview, fetchAiStatus, getUserId } from "./api.js";
+import { fetchExamples, fetchExample, analyze, analyzeMulti, aiReview, aiFix, generatePov, fetchAiStatus, getUserId } from "./api.js";
 import FindingCard from "./components/FindingCard.jsx";
 import AiPanel from "./components/AiPanel.jsx";
+import PovPanel from "./components/PovPanel.jsx";
 import CodeEditor from "./components/CodeEditor.jsx";
 import Analytics from "./components/Analytics.jsx";
+import PipelineView from "./components/PipelineView.jsx";
+import { exportReportPdf } from "./pdf.js";
 
 const PHASES = ["Lexer", "Parser", "Semantic", "IR + CFG", "Security", "Report"];
 
@@ -18,45 +21,6 @@ const diagLine = (msg) => {
   return m ? parseInt(m[1], 10) : null;
 };
 
-// Plain-text report mirroring the CLI's report.to_text (for export, #5).
-function reportText(r) {
-  const bar = "=".repeat(60);
-  const out = [bar, "SecureCompile-X  -  Security Report", `Source: ${r.source_file}`, bar];
-  Object.entries(r.diagnostics || {}).forEach(([phase, errs]) => {
-    if (errs && errs.length) {
-      out.push(`[${phase}] diagnostics:`);
-      errs.forEach((e) => out.push(`    - ${e}`));
-    }
-  });
-  if (!r.findings || !r.findings.length) {
-    out.push("", "No vulnerabilities detected. (clean)", "");
-    return out.join("\n");
-  }
-  out.push("", `${r.findings.length} finding(s):`, "");
-  r.findings.forEach((d, i) => {
-    const p = d.phase_attribution, loc = d.location;
-    const where = loc.file ? `${loc.file}:${loc.line}` : `line ${loc.line}`;
-    out.push(`--- Finding #${i + 1} ` + "-".repeat(40));
-    out.push(`Vulnerability : ${d.vulnerability_type}  (function ${loc.function}, ${where})`);
-    out.push(`Risk score    : ${d.risk_score}/10`);
-    out.push("Root-cause    :");
-    d.root_cause_trace.forEach((l) => out.push(`    ${l}`));
-    out.push(`Data-flow     : ${d.data_flow_path}`);
-    out.push(`Phase         : ${p.phase}  (needs ${p.needs})`);
-    out.push(`  why earlier : ${p.why}`);
-    out.push(`Reachable     : ${d.reachable_from_main ? "yes" : "no"} (from main)`);
-    out.push(`Suggested fix : ${d.suggested_fix}`);
-    out.push("");
-  });
-  return out.join("\n");
-}
-
-function downloadBlob(filename, content, type) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 // Live-analysis debounce windows (ms after the last keystroke).
 const ENGINE_DELAY = 650;   // the compiler engine is instant, so react fast
@@ -138,6 +102,10 @@ export default function App() {
 
   // Cross-panel linking: which right-panel detail is flashing from a marker click.
   const [highlightId, setHighlightId] = useState(null);
+  const [applyingAll, setApplyingAll] = useState(false);
+  // Proof-of-Vulnerability state.
+  const [povResult, setPovResult] = useState(null);
+  const [povBusy, setPovBusy] = useState(false);
 
   // View switch + analytics refresh trigger.
   const [view, setView] = useState("analyze");   // "analyze" | "analytics"
@@ -247,6 +215,20 @@ export default function App() {
     }
   }
 
+  // Proof-of-Vulnerability: synthesise a triggering input/trace per finding.
+  async function onProve() {
+    if (!activeHasCode || povBusy) return;
+    setPovBusy(true);
+    setError(null);
+    try {
+      setPovResult(await generatePov(active.code, active.name));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPovBusy(false);
+    }
+  }
+
   // Switching tabs: drop the previous file's results so findings never look
   // like they belong to the file now on screen (live analysis repopulates).
   function switchTo(idx) {
@@ -254,6 +236,7 @@ export default function App() {
     setActiveIdx(idx);
     setResult(null);
     setAiResult(null);
+    setPovResult(null);
     setError(null);
   }
 
@@ -315,6 +298,25 @@ export default function App() {
     }));
   }
 
+  // Apply ALL fixes in one click: Gemini rewrites the whole active file with
+  // every issue fixed, and we replace the editor with the corrected source.
+  // (Robust — avoids per-line snippet stitching, which the LLM's prose/line
+  // inaccuracies made unreliable.)
+  async function applyAllFixes() {
+    if (!activeHasCode || applyingAll) return;
+    setApplyingAll(true);
+    setAiError(null);
+    try {
+      const r = await aiFix(active.code, active.name);
+      if (r.error) setAiError(r.error);
+      else if (r.code && r.code !== active.code) setActiveCode(r.code);
+    } catch (e) {
+      setAiError(e.message);
+    } finally {
+      setApplyingAll(false);
+    }
+  }
+
   function onMarkerClick(id) {
     setHighlightId(id);
     requestAnimationFrame(() => {
@@ -329,7 +331,7 @@ export default function App() {
       <header>
         <div className="brand">
           <div>
-            <h1>SecureCompile-X</h1>
+            <h1>Argus</h1>
             <p className="tag">Secure Code. Smarter Compilers. Safer Software.</p>
           </div>
         </div>
@@ -337,6 +339,8 @@ export default function App() {
           <div className="viewswitch">
             <button className={view === "analyze" ? "active" : ""}
                     onClick={() => setView("analyze")}>Analyzer</button>
+            <button className={view === "pipeline" ? "active" : ""}
+                    onClick={() => setView("pipeline")}>Pipeline</button>
             <button className={view === "analytics" ? "active" : ""}
                     onClick={() => setView("analytics")}>Analytics</button>
           </div>
@@ -353,6 +357,10 @@ export default function App() {
       {view === "analytics" ? (
         <main className="analytics-main">
           <Analytics userId={getUserId()} refreshKey={analyticsKey} />
+        </main>
+      ) : view === "pipeline" ? (
+        <main className="analytics-main">
+          <PipelineView code={active.code} filename={active.name} />
         </main>
       ) : (
       <main ref={mainRef}>
@@ -383,6 +391,12 @@ export default function App() {
                    onChange={(e) => setActiveName(e.target.value)} spellCheck={false} />
             <button className="primary" onClick={onAnalyze} disabled={busy}>
               {busy ? <><span className="spinner" />Analyzing…</> : "▶ Analyze"}
+            </button>
+            <button className="pov-btn" onClick={onProve}
+                    disabled={povBusy || !activeHasCode}
+                    title="Synthesise a concrete triggering input / trace for each finding">
+              {povBusy ? <><span className="spinner" />Proving…</>
+                : <>🧪 Prove exploitable</>}
             </button>
           </div>
           <CodeEditor value={active.code} onChange={setActiveCode}
@@ -421,9 +435,11 @@ export default function App() {
         <section className="report-pane">
           {error && <div className="summary err">⚠ {error}</div>}
 
+          <PovPanel result={povResult} busy={povBusy} />
+
           {!result && !error && (
             <div className="intro">
-              <h4>What SecureCompile-X finds</h4>
+              <h4>What Argus finds</h4>
               <ul className="intro-classes">
                 <li><b>Buffer Overflow</b> — tainted or unbounded data reaching a copy/sink</li>
                 <li><b>Use-After-Free</b> — a pointer used after <code>free</code>, or a double free</li>
@@ -453,10 +469,7 @@ export default function App() {
             <>
               <div className="report-tools">
                 <span className="rt-label">Export</span>
-                <button onClick={() => downloadBlob("securecompile-report.json",
-                  JSON.stringify(result, null, 2), "application/json")}>JSON</button>
-                <button onClick={() => downloadBlob("securecompile-report.txt",
-                  reportText(result), "text/plain")}>TXT</button>
+                <button onClick={() => exportReportPdf(result)}>⬇ PDF</button>
               </div>
               <div className={`summary ${result.finding_count ? "found" : hasDiag ? "warn" : "clean"}`}>
                 {result.finding_count > 0 ? (
@@ -508,6 +521,8 @@ export default function App() {
             enabled={aiOn && (activeHasCode || aiAvailable === false)}
             highlightId={highlightId}
             onApplyFix={applyFix}
+            onApplyAll={applyAllFixes}
+            applyingAll={applyingAll}
           />
         </section>
       </main>

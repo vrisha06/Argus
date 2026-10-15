@@ -1,4 +1,4 @@
-"""Optional AI assist layer for SecureCompile-X.
+"""Optional AI assist layer for Argus.
 
 This module adds *plain-English* security suggestions on top of the compiler
 engine's own findings, using Google's Gemini API (free tier). It is deliberately
@@ -200,19 +200,39 @@ def _call_once(model, key, body, timeout):
         return None, None, f"request failed: {e}"
 
 
-def _build_body(prompt, include_thinking):
-    gen = {
-        "responseMimeType": "application/json",
-        "responseSchema": _RESPONSE_SCHEMA,
-        "temperature": 0.2,
-        "maxOutputTokens": 1024,
-    }
-    # Disabling the model's internal "thinking" step cuts latency sharply for
-    # this bounded, schema-constrained task. Some older models reject the field,
-    # so review() retries without it on a 400 that mentions thinking.
-    if include_thinking:
-        gen["thinkingConfig"] = {"thinkingBudget": 0}
-    return {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": gen}
+def _run(prompt, gen_base, timeout):
+    """Generate text from `prompt`, resiliently. Returns (text|None, error, model).
+
+    Handles the free-tier failure modes shared by all calls: transient overload
+    (503/429) retried with backoff, a retired/unknown model (404) falling through
+    to the configured fallbacks, and models that reject thinkingConfig (generic
+    400) retried once without it. Disabling "thinking" cuts latency."""
+    key = api_key()
+    if not key:
+        return None, None, model_name()
+    last_status, last_detail = None, None
+    for model in _models():
+        include_thinking = True
+        attempt = 0
+        while attempt < _MAX_ATTEMPTS:
+            gen = dict(gen_base)
+            if include_thinking:
+                gen["thinkingConfig"] = {"thinkingBudget": 0}
+            body = {"contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen}
+            payload, status, detail = _call_once(model, key, body, timeout)
+            if payload is not None:
+                return _extract_text(payload), None, model
+            last_status, last_detail = status, detail
+            if status == 400 and include_thinking:
+                include_thinking = False
+                continue
+            if status in _RETRY_STATUS:
+                time.sleep(_BACKOFF * (2 ** attempt))
+                attempt += 1
+                continue
+            break  # 404 / other 4xx: try next model
+    return None, _friendly_error(last_status, last_detail), model_name()
 
 
 def _friendly_error(status, detail):
@@ -231,8 +251,22 @@ def _friendly_error(status, detail):
     return f"Could not reach Gemini: {detail}"
 
 
-def _finish(base, payload):
-    text = _extract_text(payload)
+def review(code, findings, source_file="input.c", timeout=20):
+    """Ask Gemini for suggestions on `code`. Always returns a well-formed dict:
+    {available, model, suggestions:[...], error: str|None}."""
+    key = api_key()
+    base = {"available": bool(key), "model": model_name(), "suggestions": [],
+            "error": None}
+    if not key or not (code or "").strip():
+        return base
+
+    gen = {"responseMimeType": "application/json", "responseSchema": _RESPONSE_SCHEMA,
+           "temperature": 0.2, "maxOutputTokens": 1024}
+    text, error, model = _run(_build_prompt(code, findings, source_file), gen, timeout)
+    base["model"] = model
+    if error:
+        base["error"] = error
+        return base
     if not text:
         base["error"] = "Gemini returned no content."
         return base
@@ -241,58 +275,87 @@ def _finish(base, payload):
     except json.JSONDecodeError:
         base["error"] = "Gemini returned non-JSON content."
         return base
-    suggestions = parsed.get("suggestions", []) if isinstance(parsed, dict) else []
-    base["suggestions"] = _sanitize(suggestions)
+    base["suggestions"] = _sanitize(
+        parsed.get("suggestions", []) if isinstance(parsed, dict) else [])
     return base
 
 
-def review(code, findings, source_file="input.c", timeout=20):
-    """Ask Gemini for suggestions on `code`, resiliently.
+def _strip_fences(text):
+    """Remove a leading ```lang fence and trailing ``` if the model added them."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        lines = t.split("\n")
+        lines = lines[1:]                      # drop opening ``` / ```c
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]                 # drop closing ```
+        t = "\n".join(lines)
+    return t
 
-    Handles the common free-tier failure modes: transient overload (503/429) is
-    retried with exponential backoff, and a retired/unknown model (404) falls
-    through to the configured fallback models. Latency is reduced by turning off
-    the model's internal "thinking" step.
 
-    Returns a dict that is always well-formed:
-        {available, model, suggestions:[...], error: str|None}
-    """
+def fix_code(code, findings, source_file="input.c", remaining=None, timeout=30):
+    """Ask Gemini to rewrite the whole program with every issue fixed, returning
+    the complete corrected source. Robust "apply all": no per-line stitching.
+    `remaining` is an optional list of compiler errors from a prior attempt to
+    eliminate on this pass. Returns {available, model, code, error}."""
     key = api_key()
-    base = {"available": bool(key), "model": model_name(), "suggestions": [],
-            "error": None}
-    if not key or not (code or "").strip():
+    base = {"available": bool(key), "model": model_name(), "code": None, "error": None}
+    if not key:
+        return base
+    if not (code or "").strip():
+        base["code"] = code
         return base
 
-    prompt = _build_prompt(code, findings, source_file)
-    last_status, last_detail = None, None
+    findings_json = json.dumps(findings, indent=2) if findings else "[]"
+    remaining_block = ""
+    if remaining:
+        remaining_block = ("\n--- A PREVIOUS FIX STILL PRODUCED THESE ERRORS; "
+                           "ELIMINATE THEM ---\n" + "\n".join(remaining) + "\n")
+    prompt = f"""You are a secure-C auto-fixer. Rewrite the C program below so that
+EVERY issue is fixed and the program is correct, safe, and compilable.
 
-    for model in _models():
-        include_thinking = True
-        attempt = 0
-        while attempt < _MAX_ATTEMPTS:
-            payload, status, detail = _call_once(
-                model, key, _build_body(prompt, include_thinking), timeout)
-            if payload is not None:
-                base["model"] = model
-                return _finish(base, payload)
+Fix: the engine findings listed; memory-safety problems (buffer overflow,
+use-after-free, double free, null deref); untrusted input reaching dangerous
+sinks; and plain syntax/semantic errors (missing semicolons, parentheses,
+braces, undeclared names, missing includes/return types).
 
-            last_status, last_detail = status, detail
+Hard rules for your output:
+- Output ONLY the corrected C source code for the SAME program.
+- NO markdown, NO ``` fences, NO comments explaining the changes, NO prose.
+- Preserve the program's original intent and structure; make the minimal changes
+  needed to make it correct and safe (e.g. strcpy -> snprintf with sizeof,
+  scanf("%s") -> width-limited "%Ns", add NULL checks after malloc, set freed
+  pointers to NULL, add missing semicolons/parentheses/braces/return types).
+- CRITICAL — stay strictly inside this analyzer's supported C subset:
+  * Do NOT use the preprocessor: NO #include and NO #define lines at all.
+  * Use only int, char, void, pointers, and fixed-size arrays. No long/float/
+    double, no struct/union/enum, no typedef, no function pointers, no static.
+  * Allowed statements: declarations, assignment, if/else, while, for, return,
+    expressions, and calls to standard functions (scanf, printf, snprintf,
+    strncpy, strcpy, memcpy, malloc, free, system, ...) WITHOUT any headers —
+    the analyzer models these directly, so headers are unnecessary and will be
+    treated as errors.
+  * Call standard functions by their PLAIN names (strncpy, snprintf, memcpy, ...)
+    — never compiler builtins like __builtin_strncpy.
+- The result must re-analyze with ZERO errors and ZERO vulnerabilities.
+{remaining_block}
+--- ENGINE FINDINGS (JSON) ---
+{findings_json}
 
-            # Some models (e.g. the flash-lite line) reject thinkingConfig with
-            # a generic 400 "invalid argument". Retry once without it before
-            # giving up on this model.
-            if status == 400 and include_thinking:
-                include_thinking = False
-                continue
-
-            if status in _RETRY_STATUS:
-                time.sleep(_BACKOFF * (2 ** attempt))
-                attempt += 1
-                continue
-
-            break  # 404 / other 4xx: stop retrying this model, try next
-
-    base["error"] = _friendly_error(last_status, last_detail)
+--- CODE ({source_file}) ---
+{code}
+"""
+    gen = {"responseMimeType": "text/plain", "temperature": 0.1,
+           "maxOutputTokens": 4096}
+    text, error, model = _run(prompt, gen, timeout)
+    base["model"] = model
+    if error:
+        base["error"] = error
+        return base
+    fixed = _strip_fences(text)
+    if not fixed.strip():
+        base["error"] = "Gemini returned no corrected code."
+        return base
+    base["code"] = fixed if fixed.endswith("\n") else fixed + "\n"
     return base
 
 
