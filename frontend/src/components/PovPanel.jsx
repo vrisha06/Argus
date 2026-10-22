@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import MemoryWalkthrough from "./MemoryWalkthrough.jsx";
 
 function CopyBtn({ text }) {
   const [done, setDone] = useState(false);
@@ -10,6 +11,7 @@ function CopyBtn({ text }) {
 }
 
 export default function PovPanel({ result, busy }) {
+  const [open, setOpen] = useState({});
   if (!result && !busy) return null;
 
   return (
@@ -53,6 +55,15 @@ export default function PovPanel({ result, busy }) {
 
           {p.trigger && <p className="pov-trigger"><b>Trigger condition:</b> {p.trigger}</p>}
           {p.explanation && <p className="pov-expl">{p.explanation}</p>}
+
+          {p.memory && (
+            <div className="pov-mw">
+              <button className="pov-mw-toggle" onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}>
+                {open[i] ? "▾ Hide walkthrough" : "▸ Show how it happens"}
+              </button>
+              {open[i] && <MemoryWalkthrough memory={p.memory} />}
+            </div>
+          )}
 
           {p.trace && p.trace.length > 0 && (
             <ol className="pov-trace">

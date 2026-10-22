@@ -23,9 +23,6 @@ export default function AiPanel({ status, result, busy, error, enabled, highligh
               {applyingAll ? <><span className="spinner" />Fixing…</> : "✓ Fix all with AI"}
             </button>
           )}
-          {available && (status?.model || result?.model) && (
-            <span className="ai-model">{result?.model || status?.model}</span>
-          )}
         </div>
       </div>
 

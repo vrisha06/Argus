@@ -13,6 +13,8 @@ has no executable path, so no PoV can be produced — it is reported as
 positives.
 """
 
+import re
+
 from . import ast_nodes as A
 from .analysis import BUFFER_SINKS, COMMAND_SINKS
 from .cli import compile_and_analyze
@@ -112,6 +114,23 @@ def _display_input(s):
     return f'"{s}"'
 
 
+def _uaf_mem(f):
+    m = re.search(r"free\((\w+)\) @L(\d+) -> (free\(\w+\)|use) @L(\d+)", f.data_flow)
+    if not m:
+        return {"kind": "uaf", "var": "p", "free_line": None, "use_line": f.line,
+                "double": False}
+    return {"kind": "uaf", "var": m.group(1), "free_line": int(m.group(2)),
+            "use_line": int(m.group(4)), "double": m.group(3).startswith("free")}
+
+
+def _null_mem(f):
+    m = re.search(r"(\w+) @L(\d+) \(.*\) -> deref @L(\d+)", f.data_flow)
+    if not m:
+        return {"kind": "null", "var": "p", "alloc_line": None, "deref_line": f.line}
+    return {"kind": "null", "var": m.group(1), "alloc_line": int(m.group(2)),
+            "deref_line": int(m.group(3))}
+
+
 def _synth(f, copy, index, cmd, src):
     base = {"class": f.vclass, "type": _NAME.get(f.vclass, f.vclass),
             "line": f.line, "function": f.func}
@@ -134,6 +153,8 @@ def _synth(f, copy, index, cmd, src):
             base.update(
                 status="confirmed", witness_kind="input", input=payload,
                 input_display=_display_input(payload), delivery=deliver,
+                memory={"kind": "buffer", "name": ci["dst"], "capacity": n or 16,
+                        "assumed": not n, "length": length, "sink": ci["sink"]},
                 trigger=(f"len(input) = {length} > capacity({ci['dst']}) = {n}"
                          if n else f"len(input) = {length} exceeds the fixed buffer"),
                 explanation=(f"Entering {length} bytes via {deliver} overflows '{ci['dst']}'"
@@ -145,6 +166,8 @@ def _synth(f, copy, index, cmd, src):
             base.update(
                 status="confirmed", witness_kind="index", input=str(idx),
                 input_display=str(idx), delivery=deliver,
+                memory={"kind": "index", "name": xi["array"], "capacity": n or 16,
+                        "index": idx},
                 trigger=(f"index = {idx} ∉ [0, {n - 1}]" if n is not None
                          else f"index = {idx} is out of bounds"),
                 explanation=(f"Supplying index {idx} via {deliver} writes outside "
@@ -161,6 +184,8 @@ def _synth(f, copy, index, cmd, src):
         base.update(
             status="confirmed", witness_kind="payload", input=_INJECT,
             input_display=f'"{_INJECT}"', delivery=deliver,
+            memory={"kind": "command", "sink": cmd.get(f.line, "system"),
+                    "payload": _INJECT},
             trigger="tainted input reaches a command sink (system/exec/popen)",
             explanation=(f'Entering "{_INJECT}" via {deliver} injects a shell command the '
                          f"program hands to {cmd.get(f.line, 'system')}() — command injection."))
@@ -170,7 +195,7 @@ def _synth(f, copy, index, cmd, src):
         base.update(
             status="confirmed", witness_kind="condition",
             trigger="the allocator returns NULL (e.g. under memory pressure)",
-            trace=list(f.root_cause),
+            trace=list(f.root_cause), memory=_null_mem(f),
             explanation=(f"If malloc/calloc fails and returns NULL, the unchecked dereference "
                          f"at line {f.line} accesses address 0 — a guaranteed crash. No input "
                          f"is needed; force allocation failure to trigger it."))
@@ -180,7 +205,7 @@ def _synth(f, copy, index, cmd, src):
         base.update(
             status="confirmed", witness_kind="trace",
             trigger="control always reaches the use of the freed pointer",
-            trace=list(f.root_cause),
+            trace=list(f.root_cause), memory=_uaf_mem(f),
             explanation=(f"Every run reaches the freed-pointer use / second free at line "
                          f"{f.line}; no special input is required — the trace itself is the proof."))
         return base

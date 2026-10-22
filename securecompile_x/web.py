@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, history, inspect_pipeline, pov
+from . import ai, friendly, grouping, history, inspect_pipeline, pov
 from .cli import compile_and_analyze, compile_and_analyze_multi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,6 +60,8 @@ EXAMPLES = [
     ("null_earlyreturn.c", "Safe control", "early-return null guard"),
     ("uif_direct.c", "Unsafe Input Flow", "scanf value reaches system()"),
     ("uif_interproc.c", "Unsafe Input Flow", "tainted value reaches system() via helper"),
+    ("walkthrough_demo.c", "Memory walkthrough", "all 5 types: overflow, index, injection, null, use-after-free"),
+    ("group_demo.c", "Root-cause grouping", "one scanf feeds 2 findings + null deref + double free"),
     ("uaf_safe.c", "Safe control", "freed pointer reassigned before use"),
     ("bof_safe.c", "Safe control", "bounded strncpy copy"),
     ("control_safe.c", "Safe control", "clean program"),
@@ -88,9 +90,12 @@ def analyze(req: AnalyzeRequest):
         units = [(f.name, f.code) for f in req.files]
         findings, diagnostics = compile_and_analyze_multi(units)
         source_file = ", ".join(f.name for f in req.files)
+        sources, default = dict(units), units[0][0]
     else:
         findings, diagnostics = compile_and_analyze(req.code or "", req.filename)
         source_file = req.filename
+        sources, default = {req.filename: req.code or ""}, req.filename
+    fdicts = [f.to_dict() for f in findings]
 
     if req.record:
         # Never let a history failure break the analysis response.
@@ -107,7 +112,9 @@ def analyze(req: AnalyzeRequest):
         "source_file": source_file,
         "diagnostics": diagnostics,
         "finding_count": len(findings),
-        "findings": [f.to_dict() for f in findings],
+        "findings": fdicts,
+        "groups": grouping.group_findings(fdicts, sources),
+        "friendly_diagnostics": friendly.explain_all(diagnostics, sources, default),
     }
 
 

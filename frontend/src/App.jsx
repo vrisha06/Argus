@@ -3,6 +3,8 @@ import { fetchExamples, fetchExample, analyze, analyzeMulti, aiReview, aiFix, ge
 import FindingCard from "./components/FindingCard.jsx";
 import AiPanel from "./components/AiPanel.jsx";
 import PovPanel from "./components/PovPanel.jsx";
+import FriendlyDiagnostics from "./components/FriendlyDiagnostics.jsx";
+import RootCausePanel from "./components/RootCausePanel.jsx";
 import CodeEditor from "./components/CodeEditor.jsx";
 import Analytics from "./components/Analytics.jsx";
 import PipelineView from "./components/PipelineView.jsx";
@@ -263,12 +265,13 @@ export default function App() {
       });
       Object.entries(result.diagnostics || {}).forEach(([phase, errs]) => {
         (errs || []).forEach((e, i) => {
-          const line = diagLine(e);
-          const fname = e.split(":")[0].trim();
+          const fr = (result.friendly_diagnostics || []).find((d) => d.phase === phase && d.index === i);
+          const line = fr?.line || diagLine(e);
+          const fname = fr?.file || e.split(":")[0].trim();
           if (!line || (fname && fname !== active.name && /\.\w+$/.test(fname))) return;
           out.push({
             id: `diag-${phase}-${i}`, line, severity: "high", phase,
-            title: e.replace(/^.*?:\s*\d+:\d+:\s*/, "") || e,
+            title: fr?.title || e.replace(/^.*?:\s*\d+:\d+:\s*/, "") || e,
           });
         });
       });
@@ -489,20 +492,10 @@ export default function App() {
                 )}
               </div>
 
-              {diagEntries.length > 0 && (
-                <div className="diagnostics">
-                  <h4>Compiler diagnostics</h4>
-                  {diagEntries.map(([phase, errs]) => (
-                    <div key={phase} className="diag-group">
-                      <span className="diag-phase">{phase}</span>
-                      <ul>{errs.map((e, i) => (
-                        <li key={i} id={`diag-${phase}-${i}`}
-                            className={highlightId === `diag-${phase}-${i}` ? "flash" : ""}>{e}</li>
-                      ))}</ul>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <FriendlyDiagnostics result={result} highlightId={highlightId} />
+
+              <RootCausePanel groups={result.groups} count={result.findings.length}
+                              onJump={onMarkerClick} />
 
               <div className="findings">
                 {result.findings.map((f, i) => (
