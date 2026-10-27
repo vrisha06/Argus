@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, friendly, grouping, history, inspect_pipeline, pov
+from . import ai, flowgraph, friendly, grouping, history, inspect_pipeline, pov
 from .cli import compile_and_analyze, compile_and_analyze_multi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,6 +60,8 @@ EXAMPLES = [
     ("null_earlyreturn.c", "Safe control", "early-return null guard"),
     ("uif_direct.c", "Unsafe Input Flow", "scanf value reaches system()"),
     ("uif_interproc.c", "Unsafe Input Flow", "tainted value reaches system() via helper"),
+    ("multi_flow", "Unsafe Input Flow", "multi-file: scanf in one file reaches system() in another",
+     ["multi_main.c", "multi_util.c"]),
     ("walkthrough_demo.c", "Memory walkthrough", "all 5 types: overflow, index, injection, null, use-after-free"),
     ("group_demo.c", "Root-cause grouping", "one scanf feeds 2 findings + null deref + double free"),
     ("uaf_safe.c", "Safe control", "freed pointer reassigned before use"),
@@ -68,20 +70,37 @@ EXAMPLES = [
 ]
 
 
+def _entry(name):
+    for e in EXAMPLES:
+        if e[0] == name:
+            return e
+    return None
+
+
 @app.get("/api/examples")
 def list_examples():
-    return [{"name": n, "category": c, "desc": d} for n, c, d in EXAMPLES]
+    return [{"name": e[0], "category": e[1], "desc": e[2],
+             "kind": "safe" if e[1] == "Safe control" else "vulnerable",
+             "multifile": len(e) > 3} for e in EXAMPLES]
+
+
+def _read_fixture(fn):
+    with open(os.path.join(TESTS, fn), encoding="utf-8") as fh:
+        return fh.read()
 
 
 @app.get("/api/examples/{name}")
 def get_example(name: str):
-    if name not in {n for n, _, _ in EXAMPLES}:
+    e = _entry(name)
+    if e is None:
         return JSONResponse({"error": "unknown example"}, status_code=404)
-    path = os.path.join(TESTS, name)
-    if not os.path.isfile(path):
+    try:
+        if len(e) > 3:
+            return {"name": name,
+                    "files": [{"name": fn, "code": _read_fixture(fn)} for fn in e[3]]}
+        return {"name": name, "code": _read_fixture(e[0])}
+    except OSError:
         return JSONResponse({"error": "file missing"}, status_code=404)
-    with open(path, encoding="utf-8") as fh:
-        return {"name": name, "code": fh.read()}
 
 
 @app.post("/api/analyze")
@@ -114,6 +133,8 @@ def analyze(req: AnalyzeRequest):
         "finding_count": len(findings),
         "findings": fdicts,
         "groups": grouping.group_findings(fdicts, sources),
+        "flows": flowgraph.build_flows(fdicts, sources),
+        "risk_factors": [f.risk_factors() for f in findings],
         "friendly_diagnostics": friendly.explain_all(diagnostics, sources, default),
     }
 

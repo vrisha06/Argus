@@ -33,6 +33,21 @@ class Finding:
     def phase(self):
         return PHASE_ATTRIBUTION[self.vclass]
 
+    def risk_factors(self):
+        """Contributing terms of the deterministic 0-10 score (not in to_dict, so the
+        CLI/JSON report is unchanged)."""
+        w = RISK_WEIGHTS
+        rows = [("base", "Base score", w["base"], True),
+                ("taint", "Untrusted user input reaches the operation", w["tainted_user_input"], self.tainted_origin),
+                ("reach", "Reachable from main()" if self.reachable else "Not reachable from main()",
+                 w["reachable_from_main"] if self.reachable else w["not_reachable"], True),
+                ("unbounded", "Unbounded sink (no length limit)", w["unbounded_sink"], self.unbounded),
+                ("mitigation", "Mitigating check guards the path", w["mitigating_check"], self.guarded)]
+        total = sum(pts for _, _, pts, on in rows if on)
+        return {"factors": [{"key": k, "label": l, "points": pts, "applied": bool(on)}
+                            for k, l, pts, on in rows],
+                "raw_total": total, "score": self.risk}
+
     def to_dict(self):
         p = self.phase
         return {

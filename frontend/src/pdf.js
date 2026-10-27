@@ -36,7 +36,7 @@ export function exportReportPdf(result) {
   };
 
   // Header
-  text("Argus  —  Security Report", { size: 16, style: "bold", color: [28, 100, 133] });
+  text("Argus  —  Security Report", { size: 16, style: "bold", color: [20, 90, 67] });
   text(`Source: ${result.source_file || "input.c"}`, { size: 10, color: [100, 100, 100] });
   text(`Generated: ${new Date().toLocaleString()}`, { size: 9, color: [150, 150, 150], gap: 6 });
   rule();
@@ -60,7 +60,7 @@ export function exportReportPdf(result) {
     text("Compiler diagnostics", { size: 11, style: "bold" });
     for (const [phase, errs] of Object.entries(diag)) {
       if (!errs || !errs.length) continue;
-      text(phase, { size: 10, style: "bold", color: [28, 100, 133] });
+      text(phase, { size: 10, style: "bold", color: [20, 90, 67] });
       errs.forEach((e) => text("- " + e, { size: 9, font: "courier", indent: 10 }));
     }
     y += 4;

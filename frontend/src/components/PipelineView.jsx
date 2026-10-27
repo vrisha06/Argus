@@ -45,14 +45,16 @@ function scrollTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-export default function PipelineView({ code, filename }) {
-  const [data, setData] = useState(null);
+export default function PipelineView({ code, filename, data: preData = null, stage = null }) {
+  const [data, setData] = useState(preData);
+  const show = (k) => !stage || stage === k || (k === "cfg" && stage === "ir");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const abort = useRef(null);
 
   useEffect(() => {
-    if (!code.trim()) { setData(null); return; }
+    if (preData) { setData(preData); return undefined; }
+    if (!code.trim()) { setData(null); return undefined; }
     const t = setTimeout(async () => {
       if (abort.current) abort.current.abort();
       const ctrl = new AbortController();
@@ -68,7 +70,7 @@ export default function PipelineView({ code, filename }) {
       }
     }, 600);
     return () => clearTimeout(t);
-  }, [code, filename]);
+  }, [code, filename, preData]);
 
   if (!code.trim()) {
     return <div className="pipeline"><p className="pl-empty">Write some C in the <b>Analyzer</b> tab, then come back here — this view opens up the compiler and shows you exactly what it does to your code, step by step.</p></div>;
@@ -82,6 +84,7 @@ export default function PipelineView({ code, filename }) {
 
   return (
     <div className="pipeline">
+      {!stage && (<>
       <div className="pl-head">
         <h2>Glass-box pipeline {loading && <span className="pl-busy"><span className="spinner" />refreshing…</span>}</h2>
         <p className="pl-sub">
@@ -118,7 +121,10 @@ export default function PipelineView({ code, filename }) {
         <div className="pl-clean">✓ This program is clean — no vulnerable lines to trace. The stages below still show how it was compiled.</div>
       )}
 
+      </>)}
+
       {/* 1 · Lexer */}
+      {show("lexer") && (
       <section id="stage-lexer" className="pl-card">
         <h3>{STAGES[0].heading} <span className="pl-count">{data.tokens.length} tokens</span></h3>
         <p className="pl-desc">{STAGES[0].blurb}</p>
@@ -131,15 +137,19 @@ export default function PipelineView({ code, filename }) {
           ))}
         </div>
       </section>
+      )}
 
       {/* 2 · AST */}
+      {show("parser") && (
       <section id="stage-parser" className="pl-card">
         <h3>{STAGES[1].heading}</h3>
         <p className="pl-desc">{STAGES[1].blurb}</p>
         <ul className="ast-tree">{data.ast && <AstNode node={data.ast} lit={lit} />}</ul>
       </section>
+      )}
 
       {/* 3 · Semantic */}
+      {show("semantic") && (
       <section id="stage-semantic" className="pl-card">
         <h3>{STAGES[2].heading}</h3>
         <p className="pl-desc">{STAGES[2].blurb}</p>
@@ -163,8 +173,10 @@ export default function PipelineView({ code, filename }) {
           </div>
         )}
       </section>
+      )}
 
       {/* 4 · TAC */}
+      {show("ir") && (
       <section id="stage-ir" className="pl-card">
         <h3>{STAGES[3].heading}</h3>
         <p className="pl-desc">{STAGES[3].blurb}</p>
@@ -181,8 +193,10 @@ export default function PipelineView({ code, filename }) {
           </div>
         ))}
       </section>
+      )}
 
       {/* 5 · CFG */}
+      {show("cfg") && (
       <section id="stage-cfg" className="pl-card">
         <h3>{STAGES[4].heading}</h3>
         <p className="pl-desc">{STAGES[4].blurb}</p>
@@ -216,6 +230,7 @@ export default function PipelineView({ code, filename }) {
           </div>
         ))}
       </section>
+      )}
     </div>
   );
 }

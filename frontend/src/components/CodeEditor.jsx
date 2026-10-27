@@ -1,4 +1,5 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { highlightLines } from "../highlight.js";
 
 // C89/C99 keywords.
 const KEYWORDS = [
@@ -78,11 +79,14 @@ function topSeverity(ms) {
   return ms.reduce((a, m) => (SEV_RANK[m.severity] > SEV_RANK[a] ? m.severity : a), "info");
 }
 
-export default function CodeEditor({ value, onChange, markers = [], onMarkerClick }) {
+export default function CodeEditor({ value, onChange, markers = [], onMarkerClick, highlight = [], focusLine = null, placeholder = "" }) {
   const taRef = useRef(null);
   const gutterInnerRef = useRef(null);
   const pendingCaret = useRef(null);
   const hoverTimer = useRef(null);
+  const hlRef = useRef(null);
+  const hlLines = useMemo(() => highlightLines(value), [value]);
+  const hitSet = useMemo(() => new Set(highlight), [highlight]);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [sel, setSel] = useState(0);
@@ -106,6 +110,17 @@ export default function CodeEditor({ value, onChange, markers = [], onMarkerClic
       pendingCaret.current = null;
     }
   }, [value]);
+
+  useEffect(() => {
+    const el = taRef.current;
+    if (!focusLine || !el) return;
+    const top = Math.max(0, (focusLine.line - 4) * LINE_H);
+    el.scrollTop = top;
+    if (hlRef.current) hlRef.current.style.transform = `translate(${-el.scrollLeft}px, ${-top}px)`;
+    if (gutterInnerRef.current) gutterInnerRef.current.style.transform = `translateY(${-top}px)`;
+    setScrollTop(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusLine?.n]);
 
   function refresh(el) {
     const caret = el.selectionStart;
@@ -155,6 +170,9 @@ export default function CodeEditor({ value, onChange, markers = [], onMarkerClic
 
   function handleScroll(e) {
     setScrollTop(e.target.scrollTop);
+    if (hlRef.current) {
+      hlRef.current.style.transform = `translate(${-e.target.scrollLeft}px, ${-e.target.scrollTop}px)`;
+    }
     if (gutterInnerRef.current) {
       gutterInnerRef.current.style.transform = `translateY(${-e.target.scrollTop}px)`;
     }
@@ -183,7 +201,7 @@ export default function CodeEditor({ value, onChange, markers = [], onMarkerClic
             return (
               <div
                 key={i}
-                className="gutter-row"
+                className={`gutter-row ${hitSet.has(line) ? "hit" : ""}`}
                 onMouseEnter={ms ? () => showHover(line) : undefined}
                 onMouseLeave={ms ? hideHoverSoon : undefined}
               >
@@ -204,7 +222,20 @@ export default function CodeEditor({ value, onChange, markers = [], onMarkerClic
       </div>
 
       <div className="code-editor-wrap">
+        <div className="code-hl-clip" aria-hidden>
+          <div className="code-hl" ref={hlRef}>
+            {hlLines.map((toks, i) => (
+              <div key={i} className={`hl-line ${hitSet.has(i + 1) ? "hit" : ""}`}>
+                {toks.length ? toks.map((t, k) => (
+                  <span key={k} className={t.cls ? `tk-${t.cls}` : undefined}>{t.text}</span>
+                )) : "​"}
+              </div>
+            ))}
+          </div>
+        </div>
         <textarea
+          aria-label="C source code editor"
+          placeholder={placeholder}
           ref={taRef}
           className="code"
           spellCheck={false}
